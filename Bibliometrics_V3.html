@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Urdu Node Link Visualization — VOSviewer-like</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <style>
+        /* Page */
+        body {
+            font-family: "Arial", sans-serif;
+            background: #fafafa;
+            margin: 0;
+            padding: 20px;
+            color: #222;
+        }
+
+        .container {
+            max-inline-size: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 28px;
+            margin-block-end: 18px;
+            font-weight: 800;
+            color: #111827;
+        }
+
+        /* visualization area: remove visible border, full white canvas like VOSviewer */
+        .visualization-container {
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+            overflow: hidden;
+            block-size: 680px; /* fixed height to resemble the figure aspect */
+            margin-block-end: 20px;
+            position: relative;
+        }
+
+        /* SVG */
+        #network-svg {
+            inline-size: 100%;
+            block-size: 100%;
+            display: block;
+            background: white;
+        }
+
+        /* curved links drawn as paths */
+        .link {
+            fill: none;
+            stroke-opacity: 0.25;
+            transition: stroke-opacity 0.16s, stroke-width 0.16s;
+        }
+
+        /* nodes */
+        .node circle {
+            stroke: #ffffff;
+            stroke-width: 1.4px;
+            cursor: pointer;
+            transition: r 0.12s, stroke-width 0.12s, opacity 0.12s;
+            filter: drop-shadow(0 1px 1px rgba(0,0,0,0.06));
+        }
+
+        /* labels — bold, blackish */
+        .label {
+            font-family: "Arial", sans-serif;
+            fill: rgba(17,24,39,0.95);
+            pointer-events: none; /* let clicks go to circles */
+            text-anchor: middle;
+            font-weight: 700;
+            transition: opacity 0.12s, font-size 0.12s;
+        }
+
+        /* smaller labels (for tiny nodes) */
+        .label.small {
+            font-weight: 600;
+            fill: rgba(17,24,39,0.75);
+        }
+
+        /* when node active highlight table & network */
+        .dimmed {
+            opacity: 0.08 !important;
+        }
+
+        /* table styles */
+        .data-panel {
+            background: white;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.04);
+        }
+
+        table { inline-size: 100%; border-collapse: collapse; }
+        th, td { padding: 8px 10px; text-align: start; border-block-end: 1px solid #f3f4f6; font-size: 14px; }
+        thead th { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.02em; }
+        tbody tr:hover { background: rgba(99,102,241,0.06); cursor: pointer; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>English Node Link Visualization (VOSviewer-like)</h1>
+
+    <div class="visualization-container">
+        <svg id="network-svg"></svg>
+    </div>
+
+    <div class="data-panel" style="margin-block-end:16px; display:flex; gap:16px; flex-wrap:wrap; align-items:center;">
+        <div style="flex:1; min-inline-size:220px;">
+            <label class="block text-sm font-semibold mb-2">Load .txt corpus</label>
+            <input id="fileInput" type="file" accept=".txt" onchange="handleFileSelect(event)" />
+            <div id="fileNameDisplay" style="margin-block-start:8px; color:#6b7280; font-size:13px;">File loaded: Mock Urdu Data</div>
+            <div style="margin-block-start:8px;">
+                <label class="text-sm">Minimum link frequency:</label>
+                <input id="minFreqInput" type="number" value="2" min="1" style="inline-size:80px; margin-inline-start:8px;" onchange="restartSimulation()" />
+            </div>
+        </div>
+
+        <div style="min-inline-size:210px; text-align:end;">
+            <div style="font-size:13px; color:#6b7280; margin-block-end:8px;">Click a node to view concordance or click Reset</div>
+            <button onclick="restartSimulation()" style="background:#4f46e5;color:white;padding:8px 14px;border-radius:8px;border:none;font-weight:700;cursor:pointer;">Reset View</button>
+        </div>
+    </div>
+
+    <div class="data-panel">
+        <h2 style="margin:0 0 12px 0; font-size:16px; font-weight:700;">Node Link Frequency Table</h2>
+        <div id="tableInstructions" style="margin-block-end:10px; color:#6b7280; font-size:13px;">Click any word (node) above to see a three-word concordance.</div>
+        <div style="overflow:auto;">
+            <table id="data-table">
+                <thead id="tableHead"></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ---------- DATA & STATE ---------- */
+const mockCorpusText = `Pakistan a beautiful country is. Pakistan's every city has beauty. Pakistan's greatness is very important. Greatness's secret is in hardwork. Hardwork's key is success. Success's key is hardwork. On this success country is proud. Country's proud are people. People country's real strength are. Strength's secret is unity. Unity is most important. bibliometrics science citations impact web of science scopus google scholar performance knowledge management research fronts innovation evolution`; // extended a bit
+
+let corpusData = { graph: {nodes:[], links:[]}, linkTable: [], concordance: {} };
+let svg, g, linkLayer, nodeLayer, labelLayer;
+let width, height, simulation, adjacencyMap;
+let activeNodeId = null;
+let maxNodeFrequency = 1;
+
+// color palette (many colors, VOSviewer-like)
+const color = d3.scaleOrdinal()
+    .domain(d3.range(0, 20))
+    .range(["#377eb8","#e41a1c","#4daf4a","#984ea3","#ff7f00","#ffff33","#a65628","#f781bf","#999999","#8dd3c7",
+            "#66c2a5","#fc8d62","#8da0cb","#e78ac3","#a6d854","#ffd92f","#e5c494","#b3b3b3","#b2df8a","#1f78b4"]);
+
+/* ---------- TEXT PROCESSING (kept from your original and adapted) ---------- */
+function processText(rawText) {
+    const cleanedText = rawText.replace(/[.,،؛:!؟()'"]/g, ' ').replace(/\s+/g, ' ').trim();
+    const words = cleanedText.split(/\s+/).filter(w => w.length > 1);
+
+    const stopWords = new Set(['a','an','the','is','are','in','on','of','and','to','has','very','this','its','it','by','for','with']);
+    const meaningfulWords = words.filter(w => !stopWords.has(w.toLowerCase()));
+
+    // concordance (one before, one after)
+    const concordanceMap = {};
+    for (let i=0;i<words.length;i++){
+        const target = words[i];
+        if (meaningfulWords.includes(target)) {
+            const pre = words[i-3] || '';
+            const post = words[i+3] || '';
+            concordanceMap[target] = concordanceMap[target] || [];
+            concordanceMap[target].push({pre, target, post, id:`c-${target}-${concordanceMap[target].length}`});
+        }
+    }
+
+    // node frequency and link frequency (window size 2)
+    const nodeFreq = {};
+    const linkFreq = {};
+    for (let i=0;i<meaningfulWords.length;i++){
+        const w1 = meaningfulWords[i];
+        nodeFreq[w1] = (nodeFreq[w1]||0)+1;
+        if (i+1 < meaningfulWords.length) {
+            const w2 = meaningfulWords[i+1];
+            const pair = [w1,w2].sort();
+            const key = pair.join('---');
+            linkFreq[key] = (linkFreq[key]||0)+1;
+        }
+    }
+
+    maxNodeFrequency = Math.max(...Object.values(nodeFreq), 1);
+
+    // optional manual grouping for nicer colors (small example)
+    const wordGroups = {}; // leave empty, group by simple hash below
+
+    const nodes = Object.keys(nodeFreq).map(id => {
+        const group = wordGroups[id] || (Math.abs(hashString(id)) % 10);
+        return { id, freq: nodeFreq[id], group };
+    });
+
+    const links = Object.entries(linkFreq).map(([k,v]) => {
+        const [a,b] = k.split('---');
+        return { source: a, target: b, value: v };
+    });
+
+    const totalLinks = Math.max(meaningfulWords.length, 1);
+    const linkTable = links.map(l => {
+        return {
+            word1: l.source,
+            word2: l.target,
+            freq: l.value,
+            percent: ((l.value/totalLinks)*100).toFixed(1)+'%',
+            word1Freq: nodeFreq[l.source]||0,
+            word2Freq: nodeFreq[l.target]||0
+        };
+    }).sort((a,b)=>b.freq-a.freq);
+
+    return { graph: {nodes, links}, linkTable, concordance: concordanceMap };
+}
+
+function hashString(s){ let h=0; for(let i=0;i<s.length;i++){ h=(h<<5)-h + s.charCodeAt(i); h |= 0;} return h; }
+
+/* ---------- FILTER ---------- */
+function filterGraphData(data) {
+    const minFreq = parseInt(document.getElementById('minFreqInput').value) || 1;
+    const filteredLinks = data.links.filter(l => l.value >= minFreq);
+    const required = new Set();
+    filteredLinks.forEach(l => { required.add(l.source); required.add(l.target); });
+    const filteredNodes = data.nodes.filter(n => required.has(n.id));
+    return { nodes: filteredNodes, links: filteredLinks };
+}
+
+/* ---------- FILE INPUT ---------- */
+function handleFileSelect(evt){
+    const file = evt.target.files && evt.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            corpusData = processText(e.target.result);
+            document.getElementById('fileNameDisplay').textContent = 'File loaded: ' + file.name;
+            restartSimulation();
+        } catch(err) {
+            console.error(err);
+            document.getElementById('fileNameDisplay').textContent = 'Error processing file.';
+        }
+    };
+    reader.readAsText(file);
+}
+
+/* ---------- DRAW / VISUALIZATION ---------- */
+function setupSvg() {
+    const container = document.querySelector('.visualization-container');
+    width = container.clientWidth;
+    height = container.clientHeight;
+
+    // clear
+    d3.select("#network-svg").selectAll("*").remove();
+
+    svg = d3.select("#network-svg")
+        .attr("width", width)
+        .attr("height", height)
+        .call(d3.zoom().on("zoom", (event) => {
+            g.attr("transform", event.transform);
+        }));
+
+    g = svg.append("g");
+
+    // layers for correct z-order
+    linkLayer = g.append("g").attr("class","links");
+    nodeLayer = g.append("g").attr("class","nodes");
+    labelLayer = g.append("g").attr("class","labels");
+}
+
+function createAdjacencyMap(links) {
+    const adj = {};
+    links.forEach(l => {
+        const s = l.source.id || l.source;
+        const t = l.target.id || l.target;
+        adj[s] = adj[s] || new Set();
+        adj[t] = adj[t] || new Set();
+        adj[s].add(t);
+        adj[t].add(s);
+    });
+    return adj;
+}
+
+function drawVisualization(data) {
+    activeNodeId = null;
+
+    setupSvg();
+
+    // scales
+    const radiusScale = d3.scaleSqrt().domain([1, maxNodeFrequency]).range([4, 34]);
+    const labelScale = d3.scaleSqrt().domain([1, maxNodeFrequency]).range([10, 30]); // font size
+
+    // simulation
+    simulation = d3.forceSimulation(data.nodes)
+        .force("link", d3.forceLink(data.links).id(d => d.id).distance(d => 60 + (50 / Math.max(1, d.value))).strength(0.16))
+        .force("charge", d3.forceManyBody().strength(-120))
+        .force("center", d3.forceCenter(width/2, height/2))
+        .force("collide", d3.forceCollide(d => radiusScale(d.freq) + 4).iterations(3))
+        .alpha(0.9)
+        .alphaDecay(0.03);
+
+    // create links as paths for slight curvature (visual similar to VOSviewer)
+    link = linkLayer.selectAll("path")
+        .data(data.links, d => `${d.source}-${d.target}`)
+        .enter()
+        .append("path")
+        .attr("class", "link")
+        .attr("stroke", d => color(d.source.group))
+        .attr("stroke-width", d => Math.max(1, d.value * 0.6))
+        .attr("stroke-linecap", "round")
+        .attr("fill", "none")
+        .attr("opacity", 0.5);
+
+    // nodes
+    node = nodeLayer.selectAll("g.node")
+        .data(data.nodes, d => d.id)
+        .enter()
+        .append("g")
+        .attr("class", "node")
+        .style("cursor", "pointer")
+        .on("mouseover", (event, d) => {
+            if (!activeNodeId) setHighlight(d, true, radiusScale);
+        })
+        .on("mouseout", (event, d) => {
+            if (!activeNodeId) setHighlight(d, false, radiusScale);
+        })
+        .on("click", (event, d) => {
+            handleNodeClick(d, radiusScale);
+        })
+        .call(d3.drag()
+            .on("start", (event, d) => {
+                if (!event.active) simulation.alphaTarget(0.2).restart();
+                d.fx = d.x; d.fy = d.y;
+            })
+            .on("drag", (event, d) => {
+                d.fx = event.x; d.fy = event.y;
+                ticked(); // manually update visuals while dragging
+            })
+            .on("end", (event, d) => {
+                if (!event.active) simulation.alphaTarget(0);
+                // keep pinned if active node; else release
+                if (activeNodeId !== d.id) { d.fx = null; d.fy = null; }
+            }));
+
+    node.append("circle")
+        .attr("r", d => radiusScale(d.freq))
+        .attr("fill", d => color(d.group))
+        .attr("stroke-opacity", 0.95);
+
+    // labels (centered over node, font scaled)
+    labels = labelLayer.selectAll("text")
+        .data(data.nodes, d => d.id)
+        .enter()
+        .append("text")
+        .attr("class", "label")
+        .text(d => d.id)
+        .style("font-size", d => Math.round(labelScale(d.freq)) + "px")
+        .style("opacity", 0.95)
+        .each(function(d) {
+            // reduce font for long words so they fit neatly
+            const len = d.id.length;
+            if (len > 14) d3.select(this).attr("class","label small");
+        });
+
+    // adjacency map for highlight logic
+    adjacencyMap = createAdjacencyMap(simulation.force("link").links());
+
+    simulation.on("tick", ticked);
+
+    // run for some ticks to settle initially (speeds up initial placement)
+    for (let i=0;i<200;i++) simulation.tick();
+
+    ticked(); // final draw
+
+    populateLinkFrequencyTable(corpusData.linkTable);
+
+    function ticked(){
+        // draw curved link paths (quadratic Bezier)
+        link.attr("d", d => {
+            const sx = d.source.x, sy = d.source.y, tx = d.target.x, ty = d.target.y;
+            const dx = tx - sx, dy = ty - sy;
+            const dr = Math.sqrt(dx*dx + dy*dy) * 0.6; // curvature magnitude
+            // use control point roughly mid plus perpendicular offset
+            const cx = sx + dx/2 + (dy / (dr+0.001)) * (dr*0.2);
+            const cy = sy + dy/2 - (dx / (dr+0.001)) * (dr*0.2);
+            return `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`;
+        });
+
+        node.attr("transform", d => `translate(${d.x},${d.y})`);
+        labels.attr("x", d => d.x).attr("y", d => d.y - (radiusScale(d.freq) + 6)); // label slightly above node center
+    }
+}
+
+/* ---------- HIGHLIGHT & INTERACTION ---------- */
+function handleNodeClick(d, radiusScale) {
+    if (activeNodeId === d.id) {
+        // deactivate
+        const prev = node.filter(n=>n.id===activeNodeId).datum();
+        if (prev) setHighlight(prev, false, radiusScale);
+        activeNodeId = null;
+        populateLinkFrequencyTable(corpusData.linkTable);
+        return;
+    }
+
+    // if another active, clear first
+    if (activeNodeId) {
+        const prev = node.filter(n=>n.id===activeNodeId).datum();
+        if (prev) setHighlight(prev, false, radiusScale);
+    }
+
+    activeNodeId = d.id;
+    setHighlight(d, true, radiusScale);
+    populateConcordanceTable(d.id);
+}
+
+function setHighlight(d, isHighlighted, radiusScale) {
+    const nodeId = d.id;
+    const neighbors = adjacencyMap[nodeId] || new Set();
+
+    // nodes: dim non-neighbors
+    node.selectAll("circle").transition().duration(120).attr("opacity", n => {
+        return isHighlighted ? ((n.id === nodeId || neighbors.has(n.id)) ? 1 : 0.12) : 1;
+    }).attr("r", n => {
+        const base = radiusScale(n.freq);
+        return isHighlighted && n.id === nodeId ? base + 6 : base;
+    });
+
+    // labels
+    labels.transition().duration(120).style("opacity", n => {
+        return isHighlighted ? ((n.id === nodeId || neighbors.has(n.id)) ? 1 : 0.08) : 0.95;
+    }).style("font-size", n => {
+        const base = Math.max(10, Math.round((+d3.select(this).attr("font-size")||12)));
+        // active label slightly larger (we keep simple: boldness is enough)
+        return null;
+    });
+
+    // links
+    link.transition().duration(120)
+        .attr("stroke-opacity", l => {
+            const s = l.source.id || l.source, t = l.target.id || l.target;
+            const conn = (s === nodeId || t === nodeId);
+            return isHighlighted ? (conn ? 0.95 : 0.06) : 0.25;
+        })
+        .attr("stroke-width", l => {
+            const s = l.source.id || l.source, t = l.target.id || l.target;
+            const conn = (s === nodeId || t === nodeId);
+            return isHighlighted ? (conn ? Math.max(2.4, l.value*1.6) : Math.max(0.4, l.value*0.2)) : Math.max(0.8, l.value*0.6);
+        })
+        .attr("stroke", l => {
+            const s = l.source.id || l.source, t = l.target.id || l.target;
+            const conn = (s === nodeId || t === nodeId);
+            return conn ? "#f97316" : color(l.source.group); // orange highlight for active-connected
+        });
+}
+
+/* ---------- TABLES ---------- */
+function populateLinkFrequencyTable(data) {
+    document.getElementById('tableHead').innerHTML = `
+        <tr>
+            <th>Word 1</th><th>Word 2</th><th>Link Freq</th><th>Percent</th><th>Word1 Freq</th><th>Word2 Freq</th>
+        </tr>`;
+    const tbody = d3.select("#tableBody");
+    tbody.selectAll("tr").remove();
+
+    const rows = tbody.selectAll("tr").data(data).enter().append("tr")
+        .on("click", (event, d) => {
+            // reset active node highlight if any
+            if (activeNodeId) {
+                const prev = node.filter(n=>n.id===activeNodeId).datum();
+                if (prev) setHighlight(prev, false, d3.scaleSqrt().domain([1, maxNodeFrequency]).range([4,34]));
+                activeNodeId = null;
+            }
+            // highlight link temporarily
+            link.transition().duration(200)
+                .attr("stroke", l => {
+                    const cond = (l.source.id === d.word1 && l.target.id === d.word2) || (l.source.id === d.word2 && l.target.id === d.word1);
+                    return cond ? "#f97316" : color(l.source.group);
+                })
+                .attr("stroke-width", l => {
+                    const cond = (l.source.id === d.word1 && l.target.id === d.word2) || (l.source.id === d.word2 && l.target.id === d.word1);
+                    return cond ? Math.max(3.2, l.value*1.8) : Math.max(0.8, l.value*0.6);
+                })
+                .attr("stroke-opacity", l => {
+                    const cond = (l.source.id === d.word1 && l.target.id === d.word2) || (l.source.id === d.word2 && l.target.id === d.word1);
+                    return cond ? 0.98 : 0.12;
+                });
+
+            // highlight row background
+            tbody.selectAll("tr").style("background", null);
+            d3.select(event.currentTarget).style("background", "rgba(249,115,22,0.06)");
+        });
+
+    rows.append("td").text(d=>d.word1);
+    rows.append("td").text(d=>d.word2);
+    rows.append("td").text(d=>d.freq);
+    rows.append("td").text(d=>d.percent);
+    rows.append("td").text(d=>d.word1Freq);
+    rows.append("td").text(d=>d.word2Freq);
+}
+
+function populateConcordanceTable(wordId) {
+    document.getElementById('tableHead').innerHTML = `
+        <tr><th>Preceding Word</th><th>Target Word</th><th>Following Word</th><th>Target Freq</th></tr>`;
+    const tbody = d3.select("#tableBody");
+    tbody.selectAll("tr").remove();
+
+    const data = corpusData.concordance[wordId] || [];
+    const targetNode = corpusData.graph.nodes.find(n=>n.id===wordId);
+    const targetFreq = targetNode ? targetNode.freq : 0;
+
+    const rows = tbody.selectAll("tr").data(data).enter().append("tr");
+    rows.append("td").text(d=>d.pre);
+    rows.append("td").html(d=>`<strong style="color:#4338ca">${d.target}</strong>`);
+    rows.append("td").text(d=>d.post);
+    rows.append("td").text(targetFreq);
+}
+
+/* ---------- RESTART ---------- */
+function restartSimulation() {
+    const rawGraph = JSON.parse(JSON.stringify(corpusData.graph));
+    const filtered = filterGraphData(rawGraph);
+    drawVisualization(filtered);
+
+    // if active node persists through filter, re-highlight
+    if (activeNodeId && corpusData.concordance[activeNodeId]) {
+        const activeNode = filtered.nodes.find(n=>n.id===activeNodeId);
+        if (activeNode) {
+            setTimeout(()=>{
+                setHighlight(activeNode, true, d3.scaleSqrt().domain([1, maxNodeFrequency]).range([4,34]));
+                populateConcordanceTable(activeNodeId);
+            }, 200);
+        } else {
+            activeNodeId = null;
+            populateLinkFrequencyTable(corpusData.linkTable);
+        }
+    } else {
+        activeNodeId = null;
+        populateLinkFrequencyTable(corpusData.linkTable);
+    }
+}
+
+/* ---------- INIT ---------- */
+window.addEventListener('load', () => {
+    corpusData = processText(mockCorpusText);
+    restartSimulation();
+});
+window.addEventListener('resize', () => {
+    // debounce-ish
+    setTimeout(()=>{ restartSimulation(); }, 120);
+});
+</script>
+</body>
+</html>

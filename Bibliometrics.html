@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ur">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>اردو ویژولائزیشن اور ہم آہنگی جدول</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load D3.js for visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- Load Noto Nastaliq Urdu Font for web display -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* Apply Nastaliq font globally and set text direction to RTL */
+        body {
+            font-family: 'Noto Nastaliq Urdu', serif;
+            direction: rtl;
+            text-align: right;
+        }
+
+        /* Custom styles for the visualization container */
+        .visualization-container {
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+            background-color: #f9fafb;
+            transition: all 0.3s ease;
+        }
+
+        /* Style the link paths */
+        .link {
+            stroke: #999;
+            stroke-opacity: 0.6;
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Style the nodes (circles) */
+        .node circle {
+            stroke: #fff;
+            stroke-width: 1.5px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Adjust Node Text/Label positioning for Urdu */
+        .node text {
+            pointer-events: none;
+            /* Center the text anchor */
+            text-anchor: middle; 
+            font-size: 16px; /* Larger for Nastaliq legibility */
+            font-weight: 500;
+            fill: #333;
+            transition: opacity 0.2s ease-in-out;
+            /* The X position is 0 (center), Y position is calculated in JS */
+        }
+        
+        /* Ensure the SVG scales responsively */
+        #network-svg {
+            display: block;
+            margin: 0 auto;
+        }
+
+        /* Concordance row highlighting */
+        .concordance-highlight {
+            font-weight: 700;
+            color: #4338ca; /* Indigo 700 */
+        }
+
+        /* Table header alignment for RTL (Note: Individual TH styles are set in JS when populating) */
+        #tableHead th:nth-child(1) { text-align: right; } /* Preceding Word */
+        #tableHead th:nth-child(2) { text-align: center; } /* Target Word */
+        #tableHead th:nth-child(3) { text-align: left; } /* Following Word */
+        #tableHead th:nth-child(4) { text-align: right; } /* Frequency Word */
+
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 sm:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl font-extrabold text-gray-800 mb-6 text-center">اردو نوڈ لنک ویژولائزیشن اور ہم آہنگی جدول</h1>
+
+        <!-- Visualization Area -->
+        <div id="visualization-area" class="visualization-container rounded-lg mb-8 aspect-video">
+            <svg id="network-svg" dir="rtl"></svg>
+        </div>
+
+        <!-- Control Panel (File Input and Reset) -->
+        <div class="bg-white p-6 rounded-lg shadow-xl mb-8 flex flex-col sm:flex-row items-center justify-between">
+            <div class="mb-4 sm:mb-0">
+                <h2 class="text-xl font-semibold text-gray-700 mb-2">ڈیٹا ماخذ</h2>
+                <input type="file" id="fileInput" accept=".txt" class="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-full file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-indigo-50 file:text-indigo-700
+                    hover:file:bg-indigo-100"
+                    onchange="handleFileSelect(event)">
+                <p id="fileNameDisplay" class="text-sm text-gray-500 mt-2 italic"></p>
+            </div>
+            <div class="text-left sm:text-right">
+                <p class="text-sm text-gray-500 mb-2">منظر کو ری سیٹ کرنے یا سیاق و سباق دیکھنے کے لیے بلبلے پر کلک کریں:</p>
+                <button onclick="restartSimulation()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition duration-150 shadow-md">
+                    منظر ری سیٹ کریں
+                </button>
+            </div>
+        </div>
+
+        <!-- Data Table Area -->
+        <div class="bg-white p-6 rounded-lg shadow-xl">
+            <h2 id="tableTitle" class="text-xl font-semibold text-gray-700 mb-4">نوڈ لنک فریکوئنسی جدول</h2>
+            <div id="tableInstructions" class="text-sm text-gray-500 mb-4">
+                تین الفاظ کی ہم آہنگی (concordance) دیکھنے کے لیے اوپر کسی بھی لفظ (نوڈ) پر کلک کریں۔
+            </div>
+            <div class="overflow-x-auto" dir="rtl">
+                <table id="data-table" class="min-w-full divide-y divide-gray-200">
+                    <thead id="tableHead" class="bg-gray-50">
+                        <!-- Default Link Frequency Header (RTL adjusted) -->
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">لفظ ۱</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">لفظ ۲</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">تعدد (Frequency)</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">فیصد</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">لفظ ۱ تعدد</th>
+                            <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">لفظ ۲ تعدد</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="bg-white divide-y divide-gray-200 text-right">
+                        <!-- Table rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- DATA STORAGE & GLOBAL STATE ---
+
+        // Urdu Mock Data (Simulated content) - Used for initial load
+        const mockCorpusText = `تحقیق کامیابی کی کلید ہے۔ ڈیٹا کا تجزیہ تحقیق سے حاصل ہوتا ہے۔ نظریہ کی بنیاد پر نتیجہ اخذ کیا جاتا ہے۔ ڈیٹا ہمیشہ تجزیہ کا محتاج ہے۔ نتیجہ حاصل کرنا ضروری ہے۔ کامیابی کا نظریہ۔`;
+
+        // The processed data structure from the text file
+        let corpusData = {
+            graph: { nodes: [], links: [] },
+            linkTable: [],
+            concordance: {} // {word: [{pre, target, post, id}, ...]}
+        };
+
+        let simulation;
+        let svg, g, link, node, labels;
+        let width, height;
+        let color;
+        let adjacencyMap;
+        let activeNodeId = null; // Stores the ID of the clicked/locked node
+
+        // --- DATA PROCESSING FUNCTIONS ---
+
+        /**
+         * Cleans and tokenizes text, then generates all necessary data structures.
+         * @param {string} rawText - The raw text content.
+         */
+        function processText(rawText) {
+            // 1. Clean and tokenize
+            // Only clean punctuation; keep original casing for Urdu but normalize spacing
+            const cleanedText = rawText.replace(/[.,،؛:!؟()]/g, ' ').replace(/\s+/g, ' ').trim();
+            const words = cleanedText.split(/\s+/).filter(w => w.length > 1);
+
+            // Using all words (length > 1) in the corpus for co-occurrence and concordance
+            const meaningfulWords = words;
+
+            // 2. Generate Concordance (using all words, including short ones, for context accuracy)
+            const concordanceMap = {};
+            for (let i = 0; i < words.length; i++) {
+                const target = words[i];
+
+                // Only generate concordance for words that will appear in the graph (meaningfulWords)
+                if (meaningfulWords.includes(target)) { 
+                    // Get one word before and one word after
+                    const pre = words[i - 1] || '';
+                    const post = words[i + 1] || '';
+
+                    if (!concordanceMap[target]) {
+                        concordanceMap[target] = [];
+                    }
+                    concordanceMap[target].push({
+                        pre,
+                        target,
+                        post,
+                        id: `conc-${target}-${concordanceMap[target].length}`
+                    });
+                }
+            }
+
+            // 3. Generate Link Frequencies (Co-occurrence in a 2-word window)
+            const nodeFreq = {};
+            const linkFreq = {};
+            const totalLinks = meaningfulWords.length > 0 ? meaningfulWords.length : 1;
+            const linkTable = [];
+            const processedNodes = {};
+            let groupCounter = 1;
+
+            for (let i = 0; i < meaningfulWords.length; i++) {
+                const word1 = meaningfulWords[i];
+                nodeFreq[word1] = (nodeFreq[word1] || 0) + 1;
+
+                // Look at the next word for co-occurrence (window size 2)
+                if (i + 1 < meaningfulWords.length) {
+                    const word2 = meaningfulWords[i + 1];
+                    // Sort the pair to ensure 'A, B' is treated the same as 'B, A'
+                    const pair = [word1, word2].sort();
+                    const linkKey = pair.join('---');
+                    linkFreq[linkKey] = (linkFreq[linkKey] || 0) + 1;
+                }
+            }
+
+            // 4. Structure Graph Data and Link Table
+            const nodes = Object.keys(nodeFreq).map(id => {
+                if (!processedNodes[id]) {
+                    processedNodes[id] = { id: id, group: groupCounter++, freq: nodeFreq[id] };
+                }
+                return processedNodes[id];
+            });
+
+            const links = [];
+            for (const key in linkFreq) {
+                const [sourceId, targetId] = key.split('---');
+                const value = linkFreq[key];
+
+                links.push({ source: sourceId, target: targetId, value: value });
+                
+                // Add to link table array for display
+                linkTable.push({
+                    word1: sourceId,
+                    word2: targetId,
+                    freq: value,
+                    percent: ((value / totalLinks) * 100).toFixed(1) + '%',
+                    word1Freq: nodeFreq[sourceId],
+                    word2Freq: nodeFreq[targetId]
+                });
+            }
+
+            // Sort link table by frequency
+            linkTable.sort((a, b) => b.freq - a.freq);
+
+            return {
+                graph: { nodes, links },
+                linkTable,
+                concordance: concordanceMap
+            };
+        }
+
+        /**
+         * Reads the uploaded file and updates the data.
+         */
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const rawText = e.target.result;
+                try {
+                    corpusData = processText(rawText);
+                    document.getElementById('fileNameDisplay').textContent = `لوڈ کی گئی فائل: ${file.name}`;
+                    restartSimulation(); // Redraw with new data
+                } catch (error) {
+                    console.error("Error processing file:", error);
+                    document.getElementById('fileNameDisplay').textContent = `فائل لوڈ کرنے میں خرابی۔`;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+
+        // --- D3 VISUALIZATION FUNCTIONS (RTL/Nastaliq Adapted) ---
+
+        function createAdjacencyMap(links) {
+            const adj = {};
+            // links is passed as an array of objects {source: {id, ...}, target: {id, ...}, value}
+            links.forEach(link => {
+                const sourceId = link.source.id;
+                const targetId = link.target.id;
+
+                if (!adj[sourceId]) adj[sourceId] = new Set();
+                if (!adj[targetId]) adj[targetId] = new Set();
+
+                adj[sourceId].add(targetId);
+                adj[targetId].add(sourceId);
+            });
+            return adj;
+        }
+
+        function drawVisualization(data) {
+            // Reset global state
+            activeNodeId = null;
+            
+            const container = document.getElementById('visualization-area');
+            width = container.clientWidth;
+            height = container.clientHeight;
+
+            // Clear previous SVG content
+            d3.select("#network-svg").selectAll("*").remove();
+            
+            // Build the adjacency map using the final node/link objects assigned by D3
+            adjacencyMap = createAdjacencyMap(data.links);
+
+            // Setup the SVG container
+            svg = d3.select("#network-svg")
+                .attr("width", width)
+                .attr("height", height)
+                .attr("viewBox", `0 0 ${width} ${height}`)
+                .call(d3.zoom().on("zoom", function ({ transform }) {
+                    g.attr("transform", transform);
+                }))
+                .append("g");
+
+            g = svg.append("g");
+
+            // Define color scale based on the 'group' property
+            color = d3.scaleOrdinal(d3.schemeCategory10);
+
+            // 1. Setup the Force Simulation
+            simulation = d3.forceSimulation(data.nodes)
+                .force("link", d3.forceLink(data.links).id(d => d.id).distance(100))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("x", d3.forceX().strength(0.01))
+                .force("y", d3.forceY().strength(0.01))
+                .on("tick", ticked);
+
+            // 2. Draw Links
+            link = g.append("g")
+                .attr("class", "links")
+                .selectAll("line")
+                .data(data.links)
+                .enter().append("line")
+                .attr("class", "link")
+                .attr("stroke-width", d => Math.sqrt(d.value));
+
+            // 3. Draw Nodes (circles) with interactive events
+            node = g.append("g")
+                .attr("class", "nodes")
+                .selectAll("circle")
+                .data(data.nodes)
+                .enter().append("circle")
+                .attr("r", d => d.freq * 2 + 5)
+                .attr("fill", d => color(d.group))
+                .on("mouseover", (event, d) => {
+                    if (!activeNodeId) {
+                        setHighlight(d, true);
+                    }
+                })
+                .on("mouseout", (event, d) => {
+                    if (!activeNodeId) {
+                        setHighlight(d, false);
+                    }
+                })
+                .on("click", (event, d) => {
+                    // CONCORDANCE LOGIC HERE
+                    if (activeNodeId === d.id) {
+                        // Deactivate: switch back to link table
+                        activeNodeId = null;
+                        setHighlight(d, false);
+                        populateLinkFrequencyTable(corpusData.linkTable); // Reset table
+                    } else {
+                        // Activate: show concordance table
+                        activeNodeId = d.id;
+                        setHighlight(d, true);
+                        populateConcordanceTable(d.id); // Show concordance
+                    }
+                })
+                .call(drag(simulation));
+
+            // 4. Draw Labels
+            // Positioning the label below the bubble so the bubble appears on top of the word.
+            labels = g.append("g")
+                .attr("class", "labels")
+                .selectAll("text")
+                .data(data.nodes)
+                .enter().append("text")
+                .attr("dy", d => d.freq * 2 + 5 + 8) // Vertical offset: Node Radius + Padding. Puts the text below the circle.
+                .attr("dx", 0) // Centered horizontally
+                .text(d => d.id);
+
+            // Function to update element positions on each tick
+            function ticked() {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node
+                    .attr("cx", d => d.x)
+                    .attr("cy", d => d.y);
+
+                labels
+                    .attr("x", d => d.x)
+                    .attr("y", d => d.y);
+            }
+
+            // Initial table population (Link Frequency)
+            populateLinkFrequencyTable(corpusData.linkTable);
+        }
+
+
+        // --- INTERACTION / HIGHLIGHTING LOGIC ---
+
+        function setHighlight(d, isHighlighted) {
+            const nodeId = d.id;
+            const neighbors = adjacencyMap[nodeId] || new Set();
+            const isNeighbor = (id) => neighbors.has(id);
+
+            // 1. Highlight/Dim Nodes
+            node.attr("opacity", n => {
+                return isHighlighted ? (n.id === nodeId || isNeighbor(n.id) ? 1 : 0.1) : 1;
+            }).attr("r", n => {
+                return isHighlighted && n.id === nodeId ? n.freq * 2 + 10 : n.freq * 2 + 5;
+            }).attr("stroke", n => {
+                return isHighlighted && n.id === nodeId ? d3.rgb(color(n.group)).darker(1.5) : "#fff";
+            }).attr("stroke-width", n => {
+                return isHighlighted && n.id === nodeId ? 3 : 1.5;
+            });
+
+            // 2. Highlight/Dim Links
+            link.attr("stroke-opacity", l => {
+                const sourceId = l.source.id;
+                const targetId = l.target.id;
+                const isConnected = (l.source.id === nodeId && isNeighbor(targetId)) || (targetId === nodeId && isNeighbor(sourceId));
+                return isHighlighted ? (isConnected ? 1 : 0.05) : 0.6;
+            }).attr("stroke", l => {
+                if (isHighlighted) {
+                    const isConnected = (l.source.id === nodeId && l.target.id === l.target.id) || (l.target.id === nodeId && l.source.id === l.source.id);
+                    // Use a common color for connected links or target node's color
+                    const targetGroup = d3.select(node.filter(n => n.id === nodeId).node()).datum().group;
+                    return isConnected ? color(targetGroup) : "#999";
+                }
+                return "#999";
+            }).attr("stroke-width", l => {
+                const isConnected = (l.source.id === nodeId && l.target.id === l.target.id) || (l.target.id === nodeId && l.source.id === l.source.id);
+                return isHighlighted && isConnected ? l.value * 2 : Math.sqrt(l.value);
+            });
+
+            // 3. Highlight/Dim Labels
+            labels.attr("opacity", n => {
+                return isHighlighted ? (n.id === nodeId || isNeighbor(n.id) ? 1 : 0.1) : 1;
+            }).attr("font-weight", n => {
+                return isHighlighted && n.id === nodeId ? "bold" : "500";
+            });
+        }
+
+        // --- Drag Functionality (D3 helper) ---
+        function drag(simulation) {
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+
+            return d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended);
+        }
+
+        // --- TABLE POPULATION FUNCTIONS (RTL Adjusted) ---
+
+        // Sets up the table for Link Frequency data
+        function populateLinkFrequencyTable(data) {
+            document.getElementById('tableTitle').textContent = "نوڈ لنک فریکوئنسی جدول";
+            document.getElementById('tableInstructions').textContent = "تین الفاظ کی ہم آہنگی (concordance) دیکھنے کے لیے اوپر کسی بھی لفظ (نوڈ) پر کلک کریں۔";
+
+            const tbody = d3.select("#tableBody");
+            const thead = d3.select("#tableHead");
+            tbody.selectAll("tr").remove();
+
+            // Set Link Frequency Header
+            thead.html(`
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">لفظ ۱</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">لفظ ۲</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">تعدد (Frequency)</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">فیصد</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">لفظ ۱ تعدد</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">لفظ ۲ تعدد</th>
+                </tr>
+            `);
+
+            const rows = tbody.selectAll("tr")
+                .data(data)
+                .enter()
+                .append("tr")
+                .attr("class", "hover:bg-indigo-50 transition duration-150 cursor-pointer")
+                .on("click", (event, d) => {
+                    // Reset network view but keep link highlight visible temporarily
+                    activeNodeId = null;
+                    // Reset all highlight states
+                    if (corpusData.graph.nodes.length > 0) {
+                        setHighlight(corpusData.graph.nodes[0], false); 
+                    }
+                    
+                    highlightSpecificLink(d.word1, d.word2);
+                    
+                    // Highlight the clicked row
+                    tbody.selectAll("tr").classed("bg-indigo-200", false);
+                    d3.select(event.currentTarget).classed("bg-indigo-200", true);
+                });
+
+            // Adjust text alignment for table cells (RTL)
+            rows.append("td").attr("class", "px-6 py-4 whitespace-nowrap text-base font-medium text-gray-900 text-right").text(d => d.word1);
+            rows.append("td").attr("class", "px-6 py-4 whitespace-nowrap text-base text-gray-500 text-right").text(d => d.word2);
+            rows.append("td").attr("class", "px-6 py-4 whitespace-nowrap text-base text-gray-500 text-right").text(d => d.freq);
+            rows.append("td").attr("class", "px-6 py-4 whitespace-nowrap text-base text-gray-500 text-right").text(d => d.percent);
+            rows.append("td").attr("class", "px-6 py-4 whitespace-nowrap text-base text-gray-500 text-right").text(d => d.word1Freq);
+            rows.append("td").attr("class", "px-6 py-4 whitespace-nowrap text-base text-gray-500 text-right").text(d => d.word2Freq);
+
+            function highlightSpecificLink(sourceId, targetId) {
+                link.attr("stroke-width", l => {
+                    const isTarget = (l.source.id === sourceId && l.target.id === targetId) ||
+                                     (l.source.id === targetId && l.target.id === sourceId);
+                    return isTarget ? 4 : Math.sqrt(l.value);
+                })
+                .attr("stroke", l => {
+                    const isTarget = (l.source.id === sourceId && l.target.id === targetId) ||
+                                     (l.source.id === targetId && l.target.id === sourceId);
+                    return isTarget ? "#f97316" : "#999"; // Orange for table highlight
+                });
+            }
+        }
+
+        // Sets up the table for Concordance data
+        function populateConcordanceTable(wordId) {
+            document.getElementById('tableTitle').textContent = `تین الفاظ کی ہم آہنگی (Concordance) برائے: "${wordId}"`;
+            document.getElementById('tableInstructions').textContent = "یہ جدول منتخب لفظ کے سیاق و سباق (ایک لفظ پہلے، ایک لفظ بعد) کو ظاہر کرتا ہے۔";
+
+            const tbody = d3.select("#tableBody");
+            const thead = d3.select("#tableHead");
+            tbody.selectAll("tr").remove();
+
+            const data = corpusData.concordance[wordId] || [];
+            
+            // 1. Find the target word frequency
+            const targetNode = corpusData.graph.nodes.find(n => n.id === wordId);
+            const targetFrequency = targetNode ? targetNode.freq : 0;
+
+
+            // 2. Set Concordance Header with the new column (w-1/4 for 4 columns)
+            thead.html(`
+                <tr>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">ماقبل لفظ (Preceding Word)</th>
+                    <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">مرکزی لفظ (Target Word)</th>
+                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">مابعد لفظ (Following Word)</th>
+                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider w-1/4">مرکزی لفظ تعدد (Target Word Freq)</th>
+                </tr>
+            `);
+
+            // 3. Populate body with the new column
+            tbody.selectAll("tr")
+                .data(data)
+                .enter()
+                .append("tr")
+                .attr("class", "hover:bg-indigo-50 transition duration-150 cursor-pointer")
+                .html(d => `
+                    <td class="px-6 py-4 text-right text-base text-gray-500">${d.pre}</td>
+                    <td class="px-6 py-4 text-center text-base concordance-highlight">${d.target}</td>
+                    <td class="px-6 py-4 text-left text-base text-gray-500">${d.post}</td>
+                    <td class="px-6 py-4 text-right text-base font-bold text-indigo-700">${targetFrequency}</td>
+                `);
+        }
+
+
+        // --- INITIALIZATION AND RESTART ---
+
+        function restartSimulation() {
+            // Use processed data for simulation
+            const graphData = JSON.parse(JSON.stringify(corpusData.graph));
+            drawVisualization(graphData);
+            
+            // If we are showing concordance and the node no longer exists, reset the table
+            if (activeNodeId && !corpusData.concordance[activeNodeId]) {
+                 activeNodeId = null;
+                 populateLinkFrequencyTable(corpusData.linkTable);
+            } else if (activeNodeId) {
+                // If a node was active, keep the concordance up
+                populateConcordanceTable(activeNodeId);
+            } else {
+                // Otherwise, show the default link table
+                populateLinkFrequencyTable(corpusData.linkTable);
+            }
+        }
+
+        // Initialize with mock data on load
+        window.onload = function() {
+            corpusData = processText(mockCorpusText);
+            document.getElementById('fileNameDisplay').textContent = `لوڈ کی گئی فائل: فرضی اردو ڈیٹا`;
+            restartSimulation();
+        };
+
+        // Ensure the visualization is redrawn when the window size changes
+        window.addEventListener('resize', restartSimulation);
+
+    </script>
+</body>
+</html>
