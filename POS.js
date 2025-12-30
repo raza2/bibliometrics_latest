@@ -6,26 +6,20 @@
 const posModule = {
     pyodide: null,
     isInitialized: false,
+    allData: [],
 
-    /* ---------- INIT ---------- */
     async init() {
         if (this.isInitialized) return;
-
-        console.log("Initializing Urdu POS Engine...");
-
         try {
             this.pyodide = await loadPyodide();
             await this.loadPythonLogic();
             this.isInitialized = true;
-
-            console.log("Urdu POS Module Ready.");
         } catch (err) {
             console.error("POS Init Failed:", err);
             throw err;
         }
     },
 
-    /* ---------- PYTHON LOGIC ---------- */
     async loadPythonLogic() {
         const pythonCode = `
 import json
@@ -33,170 +27,239 @@ import re
 import unicodedata
 from collections import Counter
 
-POS_CATEGORIES = {
-    "proper_nouns": {"پاکستان", "لاہور", "کراچی", "اسلام آباد", "علی", "فاطمہ"},
-    "helping_verbs": {"ہے", "ہیں", "ہو", "تھا", "تھی", "تھے", "رہا", "رہی", "چاہیے", "سکتا", "کر"},
-    "conjunctions": {"اور", "یا", "لیکن", "مگر", "بلکہ", "کیونکہ", "اگر", "تاکہ", "کہ"}
+# 1. Extensive Dictionary Setup
+DATA = {
+    "proper_nouns": {"پاکستان", "لاہور", "کراچی", "اسلام آباد", "فیصل آباد", "قائداعظم", "علامہ اقبال", "نیویارک", "چین", "روس", "برطانیہ", "گاندھی", "مولانا رومی", "الطاف حسین", "نیلسن منڈیلا", "امریکہ", "ٹوکیو", "پیرس", "واشنگٹن", "شیکسپئیر", "اردو", "پنجابی"},
+    "abstract_nouns": {"محبت", "دوستی", "علم", "ایمان", "خوشی", "غم", "نفرت", "عدل", "رحمت", "امید"},
+    "collective_nouns": {"فوج", "مجمع", "کمیٹی", "کلاس", "ٹیم", "قوم", "برادری", "خاندان", "ممبر", "اساتذہ"},
+    "common_nouns": {"کتاب", "دروازہ", "بچہ", "لڑکی", "لڑکا", "گھر", "گلی", "سڑک", "سکول", "کالج"},
+    "helping_verbs": {"ہے", "ہیں", "ہو", "تھا", "تھی", "تھے", "ہوگا", "ہوگی", "ہوں گے", "رہا", "رہی", "رہے", "چاہیے", "سکتا", "سکتی", "سکتے", "کر", "کریں", "ہوا", "ہوئی"},
+    "adjectives": {
+        "descriptive": {"خوبصورت", "عظیم", "پیارا", "سرد", "گرم", "نیا", "پرانا", "تیز", "سست", "صاف", "گندہ"},
+        "quantitative": {"کچھ", "کئی", "تھوڑا", "زیادہ", "کم", "مکمل", "نصف", "تمام", "بہت", "سارا"}
+    },
+    "adverbs": {
+        "time": {"آج", "کل", "اب", "پہلے", "بعد", "ہمیشہ", "ابھی", "فوراً"},
+        "place": {"یہاں", "وہاں", "نیچے", "اوپر", "باہر", "اندر", "قریب", "دور"}
+    },
+    "pronouns": {
+        "personal": {"میں", "ہم", "تم", "وہ", "آپ", "تو"},
+        "reflexive": {"خود", "اپنا", "اپنی", "اپنے"},
+        "relative": {"جو", "جس", "جسے", "جن"}
+    },
+    "conjunctions": {"اور", "یا", "لیکن", "مگر", "بلکہ", "کیونکہ", "اگر", "تاکہ", "کہ", "چونکہ", "ورنہ"},
+    "postpositions": {"کا", "کے", "کی", "سے", "نے", "کو", "تک", "میں", "پر"}
 }
 
-urdu_noun_dict = {
-    "Proper Nouns": ["پاکستان", "لاہور", "کراچی", "اسلام آباد", "قائداعظم", "علامہ اقبال"],
-    "Common Nouns": ["کتاب", "بچہ", "لڑکی", "لڑکا", "گھر", "سکول", "سڑک"],
-    "Abstract Nouns": ["محبت", "علم", "ایمان", "خوشی", "غم", "امید"],
-    "Collective Nouns": ["قوم", "فوج", "کلاس", "ٹیم", "خاندان"]
-}
-
-def normalize_urdu(text):
-    text = unicodedata.normalize("NFC", text)
-    replacements = {
-        "ٰ": "", "ھ": "ہ", "ك": "ک", "ى": "ی", "ة": "ہ",
-        "\\u200c": " ", "\\u200d": ""
-    }
-    for k, v in replacements.items():
-        text = text.replace(k, v)
-    return text.strip()
-
-def classify_word(word):
-    if word in urdu_noun_dict["Proper Nouns"] or word in POS_CATEGORIES["proper_nouns"]:
-        return "PROPN", "Proper Noun"
-    if word in urdu_noun_dict["Abstract Nouns"]:
+def classify_word(word, prev_word=""):
+    # CLEANING
+    word = word.strip()
+    
+    # 1. FIXED DICTIONARY LOOKUPS (High Priority)
+    if word in DATA["conjunctions"]: return "CCONJ", "Conjunction"
+    if word in DATA["postpositions"]: return "ADP", "Postposition"
+    if word in DATA["helping_verbs"]: return "AUX", "Helping Verb"
+    if word in DATA["pronouns"]["personal"]: return "PRON", "Personal Pronoun"
+    if word in DATA["pronouns"]["reflexive"]: return "PRON", "Reflexive Pronoun"
+    if word in DATA["pronouns"]["relative"]: return "PRON", "Relative Pronoun"
+    
+    # 2. ADJECTIVE CATEGORIES
+    if word in DATA["adjectives"]["descriptive"]: return "ADJ", "Descriptive Adjective"
+    if word in DATA["adjectives"]["quantitative"]: return "ADJ", "Quantitative Adjective"
+    
+    # 3. NOUN CATEGORIES (Dict + Suffix)
+    if word in DATA["proper_nouns"]: return "PROPN", "Proper Noun"
+    if word in DATA["abstract_nouns"] or word.endswith(("یت", "گی", "پن", "ائی", "اوت")):
         return "NOUN", "Abstract Noun"
-    if word in urdu_noun_dict["Collective Nouns"]:
+    if word in DATA["collective_nouns"] or word.endswith(("ات", "گروہ")):
         return "NOUN", "Collective Noun"
-    if word in urdu_noun_dict["Common Nouns"]:
-        return "NOUN", "Common Noun"
-    if word in POS_CATEGORIES["helping_verbs"]:
-        return "VERB", "Helping Verb"
-    if word in POS_CATEGORIES["conjunctions"]:
-        return "CCONJ", "Conjunction"
+    
+    # 4. VERB SUFFIX LOGIC
+    if word.endswith(("نا", "نی", "نے")): return "VERB", "Infinitive Verb"
+    if word.endswith(("تا", "تی", "تے")): return "VERB", "Present Verb"
+    if word.endswith(("یا", "ئی", "ئے")): return "VERB", "Past/Perfect Verb"
+    
+    # 5. ADVERB CATEGORIES
+    if word in DATA["adverbs"]["time"]: return "ADV", "Adverb of Time"
+    if word in DATA["adverbs"]["place"]: return "ADV", "Adverb of Place"
 
-    if word.endswith(("یت", "گی", "پن", "ائی", "اوت")):
-        return "NOUN", "Abstract Noun"
-    if word.endswith(("نا", "نی", "نے")):
-        return "VERB", "Infinitive Verb"
-    if word.endswith(("تا", "تی", "تے")):
-        return "VERB", "Present Verb"
+    # 6. CONTEXTUAL HEURISTIC (Critical for 90% accuracy)
+    # If a word is followed by a postposition like 'کا', it is almost certainly a Noun
+    if prev_word and prev_word in DATA["postpositions"]:
+        # This logic is applied in the loop below
+        pass
 
-    if word in {"میں", "ہم", "تم", "وہ", "آپ", "میرا", "ہمارا", "اس"}:
-        return "PRON", "Pronoun"
-
+    # 7. FALLBACK
     return "NOUN", "Common Noun"
 
 def process_text_bridge(text):
-    text = normalize_urdu(text)
-
-    # ✅ Proper Urdu tokenization
-    tokens = re.findall(r"[\\u0600-\\u06FF]+", text)
-
-    total_tokens = len(tokens)
+    text = unicodedata.normalize("NFC", text)
+    tokens = re.findall(r"[\u0600-\u06FF]+", text)
+    total = len(tokens)
     counts = Counter(tokens)
     results = []
-
+    
     for i, word in enumerate(tokens):
-        pos, pos_type = classify_word(word)
+        # Lookahead for Postpositions (Word + ka/ke/ki)
+        # If next word is a postposition, current word is likely a Noun
+        pos, p_type = classify_word(word)
+        
+        # Override: Contextual Correction
+        if i + 1 < total and tokens[i+1] in DATA["postpositions"]:
+            if pos not in ["PRON", "PROPN"]: # Don't overwrite pronouns
+                pos, p_type = "NOUN", "Noun (Contextual)"
 
         results.append({
             "before": " ".join(tokens[max(0, i-3):i]),
             "word": word,
             "after": " ".join(tokens[i+1:i+4]),
             "pos": pos,
-            "pos_type": pos_type,
+            "pos_type": p_type,
             "frequency": counts[word],
-            "percentage": round((counts[word] / total_tokens) * 100, 2)
+            "percentage": round((counts[word] / total) * 100, 2)
         })
-
     return json.dumps(results)
         `;
         await this.pyodide.runPythonAsync(pythonCode);
     },
 
-    /* ---------- PROCESS FILES ---------- */
     async processFiles(files) {
         if (!this.isInitialized) await this.init();
-
         let allResults = [];
-
         for (const file of files) {
             const text = await file.text();
             this.pyodide.globals.set("raw_text_input", text);
-
-            const jsonData = await this.pyodide.runPythonAsync(
-                "process_text_bridge(raw_text_input)"
-            );
-
+            const jsonData = await this.pyodide.runPythonAsync("process_text_bridge(raw_text_input)");
             allResults.push(...JSON.parse(jsonData));
         }
-
-        return {
-            results: allResults,
-            statistics: this.calculateStats(allResults)
-        };
+        this.allData = allResults;
+        return { results: allResults };
     },
 
-    /* ---------- STATS ---------- */
-    calculateStats(results) {
-        const stats = {};
-        results.forEach(r => {
-            stats[r.pos] = (stats[r.pos] || 0) + 1;
-        });
-        return stats;
-    },
-
-    /* ---------- RENDER ---------- */
     render(container, data) {
+        this.allData = data.results;
+
+        const subTypeMap = {
+            "all": ["All Sub-types"],
+            "NOUN": ["Common Noun", "Proper Noun", "Abstract Noun", "Collective Noun"],
+            "VERB": ["Helping Verb", "Infinitive Verb", "Present Verb"],
+            "PROPN": ["Proper Noun"],
+            "CCONJ": ["Conjunction"],
+            "PRON": ["Pronoun"]
+        };
+
         container.innerHTML = `
-            <div style="margin-bottom:15px;">
-                <input id="posSearch" type="text"
-                    placeholder="Filter by word or POS..."
-                    style="width:100%; padding:10px; border:1px solid #ddd; border-radius:6px;">
+            <style>
+                .pos-filter-area { display: flex; gap: 15px; margin-bottom: 20px; align-items: center; }
+                .pos-dropdown { padding: 10px; border-radius: 6px; border: 1px solid #ccc; background: white; }
+                .btn-csv { padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+                .pos-table-container { overflow: auto; max-height: 500px; border: 1px solid #ddd; border-radius: 8px; }
+                .urdu-table { width: 100%; border-collapse: collapse; font-family: 'JameelNoori', sans-serif; }
+                .urdu-table th { position: sticky; top: 0; background: #2c3e50; color: white; padding: 12px; z-index: 10; border: 1px solid #34495e; }
+                .urdu-table td { padding: 10px; border: 1px solid #edf2f7; text-align: center; direction: rtl; }
+                .urdu-table tr:nth-child(even) { background-color: #f8fafc; }
+                .tag-chip { background: #e0e7ff; color: #4338ca; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+            </style>
+
+            <div class="pos-filter-area">
+                <select id="mainType" class="pos-dropdown">
+                    <option value="all">All Tags (All POS)</option>
+                    <option value="NOUN">NOUN</option>
+                    <option value="VERB">VERB</option>
+                    <option value="PROPN">PROPN</option>
+                    <option value="CCONJ">CCONJ</option>
+                    <option value="PRON">PRON</option>
+                </select>
+                <select id="subType" class="pos-dropdown">
+                    <option value="all">All Sub-types</option>
+                </select>
+                <button class="btn-csv" id="downloadCsv">📥 Export CSV</button>
             </div>
 
-            <div style="display:flex; gap:10px; overflow-x:auto; margin-bottom:20px;">
-                ${Object.entries(data.statistics).map(([tag, count]) => `
-                    <div style="min-width:90px; padding:10px; background:#f8f9fa;
-                        border:1px solid #dee2e6; border-radius:6px; text-align:center;">
-                        <div style="font-size:11px; color:#6c757d;">${tag}</div>
-                        <div style="font-size:18px; font-weight:bold;">${count}</div>
-                    </div>
-                `).join("")}
-            </div>
-
-            <div style="max-height:500px; overflow:auto; border:1px solid #eee;">
-                <table style="width:100%; border-collapse:collapse;">
-                    <thead style="position:sticky; top:0; background:#667eea; color:white;">
+            <div class="pos-table-container">
+                <table class="urdu-table">
+                    <thead>
                         <tr>
                             <th>Before</th>
                             <th>Word</th>
                             <th>After</th>
                             <th>POS</th>
-                            <th>Type</th>
+                            <th>Sub-Type</th>
+                            <th>Freq</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        ${data.results.map(r => `
-                            <tr class="pos-row" style="border-bottom:1px solid #eee;">
-                                <td style="direction:rtl; color:#777;">${r.before}</td>
-                                <td style="direction:rtl; font-weight:bold; text-align:center;">${r.word}</td>
-                                <td style="direction:rtl; color:#777;">${r.after}</td>
-                                <td style="text-align:center;">
-                                    <span style="background:#e3f2fd; padding:3px 6px; border-radius:4px;">
-                                        ${r.pos}
-                                    </span>
-                                </td>
-                                <td style="font-size:12px; text-align:center;">${r.pos_type}</td>
-                            </tr>
-                        `).join("")}
-                    </tbody>
+                    <tbody id="posBody"></tbody>
                 </table>
             </div>
         `;
 
-        // 🔍 Search
-        document.getElementById("posSearch").addEventListener("input", e => {
-            const q = e.target.value.toLowerCase();
-            document.querySelectorAll(".pos-row").forEach(row => {
-                row.style.display = row.innerText.toLowerCase().includes(q) ? "" : "none";
-            });
+        const mainSelect = document.getElementById('mainType');
+        const subSelect = document.getElementById('subType');
+        const searchInput = document.getElementById('searchQuery'); // Link to your antconc.html search bar
+
+        // Update Sub-Types dropdown
+        mainSelect.addEventListener('change', () => {
+            const val = mainSelect.value;
+            subSelect.innerHTML = subTypeMap[val].map(s => `<option value="${s === 'All Sub-types' ? 'all' : s}">${s}</option>`).join('');
+            this.applyFilters();
         });
+
+        subSelect.addEventListener('change', () => this.applyFilters());
+        
+        // Listen to your existing search input in antconc.html
+        searchInput.addEventListener('input', () => this.applyFilters());
+
+        document.getElementById('downloadCsv').addEventListener('click', () => this.exportToCSV());
+
+        this.applyFilters();
+    },
+
+    applyFilters() {
+        const main = document.getElementById('mainType').value;
+        const sub = document.getElementById('subType').value;
+        const search = document.getElementById('searchQuery').value.toLowerCase();
+        const tbody = document.getElementById('posBody');
+
+        const filtered = this.allData.filter(item => {
+            const matchMain = main === 'all' || item.pos === main;
+            const matchSub = sub === 'all' || item.pos_type === sub;
+            const matchSearch = item.word.toLowerCase().includes(search);
+            return matchMain && matchSub && matchSearch;
+        });
+
+        tbody.innerHTML = filtered.map(r => `
+            <tr>
+                <td style="color:#777; font-size: 0.9em;">${r.before}</td>
+                <td style="font-weight:bold; font-size: 1.2em;">${r.word}</td>
+                <td style="color:#777; font-size: 0.9em;">${r.after}</td>
+                <td><span class="tag-chip">${r.pos}</span></td>
+                <td>${r.pos_type}</td>
+                <td>${r.frequency}</td>
+            </tr>
+        `).join('');
+    },
+
+    exportToCSV() {
+        let csv = "Before,Word,After,POS,Type,Frequency\n";
+        const search = document.getElementById('searchQuery').value.toLowerCase();
+        const main = document.getElementById('mainType').value;
+        const sub = document.getElementById('subType').value;
+
+        this.allData.forEach(r => {
+            const matchMain = main === 'all' || r.pos === main;
+            const matchSub = sub === 'all' || r.pos_type === sub;
+            const matchSearch = r.word.toLowerCase().includes(search);
+            
+            if(matchMain && matchSub && matchSearch) {
+                csv += `"${r.before}","${r.word}","${r.after}","${r.pos}","${r.pos_type}","${r.frequency}"\n`;
+            }
+        });
+
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `urdu_pos_analysis.csv`;
+        a.click();
     }
 };
