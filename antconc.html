@@ -382,6 +382,11 @@
         fileInput.addEventListener('change', (e) => {
             selectedFiles = Array.from(e.target.files);
             updateFileCount();
+            
+            // ADD THIS: Automatically analyze n-grams as soon as files are chosen
+            if (currentView === 'n-gram') {
+                ngramModule.init(selectedFiles);
+            }
         });
 
         function updateFileCount() {
@@ -396,20 +401,37 @@
         const chartDropdown = document.getElementById('chartDropdown');
 
         navButtons.forEach(btn => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', async () => {
+
                 navButtons.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
+
                 currentView = btn.dataset.view;
-                
+
                 if (currentView === 'bibliometrics') {
                     chartSelector.classList.add('show');
                 } else {
                     chartSelector.classList.remove('show');
                 }
-                
+
+                if (currentView === 'n-gram') {
+                    if (selectedFiles.length > 0) {
+                        ngramModule.init(selectedFiles);
+                    } else {
+                        updateView();
+                    }
+                    return;
+                }
+
+                if (currentView === 'POS') {
+                    await posModule.init();   // ✅ NOW VALID
+                    updateView();
+                    return;
+                }
+
                 const query = document.getElementById('searchQuery').value;
                 const minFreq = document.getElementById('minFreq').value;
-                
+
                 if (query && selectedFiles.length > 0) {
                     performSearch(query, minFreq);
                 } else {
@@ -417,6 +439,7 @@
                 }
             });
         });
+
 
         chartDropdown.addEventListener('change', (e) => {
             currentChart = e.target.value;
@@ -471,7 +494,6 @@
                 } else if (currentView === 'cluster') {
                     const data = await clusterModule.processFiles(selectedFiles, query, minFreq);
                     clusterModule.render(resultsArea, data);
-                    document.getElementById('totalHits').textContent = `Hits: ${data.totalHits}`;
                 } else if (currentView === 'wordcloud') {
                     const data = await wordCloudModule.processFiles(selectedFiles, query, minFreq);
                     wordCloudModule.render(resultsArea, data);
@@ -482,7 +504,7 @@
                     const data = await wordModule.processFiles(selectedFiles, query, minFreq);
                     wordModule.renderWordList(resultsArea, data);
                 } else if (currentView === 'n-gram') {
-                    const data = await ngramModule.processFiles(selectedFiles, query, minFreq, 2);
+                    const data = await ngramModule.init(selectedFiles);   
                     ngramModule.render(resultsArea, data);
                 } else if (currentView === 'collocate') {
                     const data = await collocateModule.processFiles(selectedFiles, query, minFreq, 5);
@@ -495,14 +517,18 @@
                     const data = await tokenTypeModule.processFiles(selectedFiles, query, minFreq);
                     tokenTypeModule.render(resultsArea, data);
                     document.getElementById('totalHits').textContent = `Tokens: ${data.totalHits}`;
-                }   else if (currentView === 'POS') {
-                    const data = await collocateModule.processFiles(selectedFiles, query, minFreq, 5);
-                    collocateModule.render(resultsArea, data);
-                }   else if (currentView === 'bibliometrics') {
+                } else if (currentView === 'POS') {
+                    const data = await posModule.processFiles(selectedFiles);
+                    posModule.render(resultsArea, data);
+
+                    document.getElementById('totalHits').textContent =
+                        `Words: ${data.results.length}`;
+                    
+                } else if (currentView === 'bibliometrics') {
                     const data = await bibliometricsModule.processFiles(selectedFiles, query, minFreq, currentChart);
                     bibliometricsModule.render(resultsArea, data, currentChart);
                     
-                } else {
+                }  else {
                     loadView(currentView, query, minFreq);
                 }
             } catch (error) {
@@ -540,7 +566,9 @@
 
     <!-- Include external modules -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
     <script src="kwic.js"></script>
     <script src="plot.js"></script>
     <script src="ngram.js"></script>
@@ -550,9 +578,11 @@
     <script src="word.js"></script>
     <script src="collocate.js"></script>
     <script src="bibliometrics.js"></script>
-    <script src="POS.js"></script>
+
+    <script src="POS.js"></script>   <!-- ✅ MUST LOAD -->
     <script src="morphology.js"></script>
-    <script src="tokentype.js"></script>    
+    <script src="tokentype.js"></script>
+    
 
 
 

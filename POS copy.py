@@ -12,8 +12,6 @@ import traceback
 # GUI
 import tkinter as tk
 from tkinter import OptionMenu, ttk, filedialog, messagebox
-from tkinterweb import HtmlFrame
-from tkhtmlview import HTMLLabel
 
 # Data Processing
 import pandas as pd

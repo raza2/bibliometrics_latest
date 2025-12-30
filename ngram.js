@@ -1,589 +1,227 @@
-// ngram.js - N-Gram Analysis Module
-
+// ngram.js - N-Gram Analysis Module (PRO VERSION)
 class NgramModule {
     constructor() {
-        this.ngramData = [];
-        this.currentN = 2; // default bigrams
+        this.allFilesData = new Map(); // Stores data per file
+        this.globalData = [];         // Stores merged data
+        this.filteredData = [];       // Data currently being viewed
+        this.currentN = 2;
+        this.files = null;
+        this.currentView = 'overall'; // 'overall' or filename
+        window.ngramModule = this;
     }
 
-    // Process files and generate n-grams
-    async processFiles(files, searchTerm = '', minFrequency = 2, nValue = 2) {
+    async init(files) {
+        this.files = Array.from(files);
+        await this.changeN(2);
+    }
+
+    async processFiles(nValue) {
         this.currentN = nValue;
-        this.ngramData = [];
-        const ngramMap = new Map();
-        let totalNgrams = 0;
+        const globalMap = new Map();
+        this.allFilesData.clear();
+        let globalTotal = 0;
 
-        console.log(`N-Gram: Processing files for ${nValue}-grams`);
-
-        for (const file of files) {
+        for (const file of this.files) {
             try {
                 const content = await this.readFile(file);
                 const ngrams = this.generateNgrams(content, nValue);
+                const fileMap = new Map();
                 
                 ngrams.forEach(ngram => {
-                    ngramMap.set(ngram, (ngramMap.get(ngram) || 0) + 1);
-                    totalNgrams++;
+                    // Update Global
+                    globalMap.set(ngram, (globalMap.get(ngram) || 0) + 1);
+                    globalTotal++;
+                    // Update File-specific
+                    fileMap.set(ngram, (fileMap.get(ngram) || 0) + 1);
                 });
-            } catch (error) {
-                console.error(`Error processing ${file.name}:`, error);
+
+                this.allFilesData.set(file.name, this.formatData(fileMap, ngrams.length));
+            } catch (err) {
+                console.error(`Error processing ${file.name}`, err);
             }
         }
 
-        // Filter and sort n-grams
-        this.ngramData = Array.from(ngramMap.entries())
-            .filter(([_, freq]) => freq >= minFrequency)
-            .map(([ngram, freq]) => ({
-                ngram: ngram,
-                frequency: freq,
-                percentage: ((freq / totalNgrams) * 100).toFixed(2)
-            }))
-            .sort((a, b) => b.frequency - a.frequency);
-
-        console.log(`N-Gram: Generated ${this.ngramData.length} unique ${nValue}-grams`);
-
-        return {
-            ngramData: this.ngramData,
-            totalNgrams: totalNgrams,
-            uniqueNgrams: this.ngramData.length,
-            nValue: nValue
-        };
+        this.globalData = this.formatData(globalMap, globalTotal);
+        this.updateFilteredData();
     }
 
-    // Read file content
+    formatData(map, total) {
+        return Array.from(map.entries())
+            .map(([ngram, freq]) => ({
+                ngram,
+                frequency: freq,
+                percentage: ((freq / total) * 100).toFixed(2)
+            }))
+            .sort((a, b) => b.frequency - a.frequency);
+    }
+
+    updateFilteredData(searchTerm = '') {
+        const source = this.currentView === 'overall' ? this.globalData : this.allFilesData.get(this.currentView);
+        
+        if (!searchTerm) {
+            this.filteredData = source;
+        } else {
+            const term = searchTerm.toLowerCase();
+            this.filteredData = source.filter(item => item.ngram.toLowerCase().includes(term));
+        }
+    }
+
+    generateNgrams(text, n) {
+        const words = text.toLowerCase().split(/\s+/).map(w => w.replace(/[^\w\u0600-\u06FF'-]/g, '')).filter(Boolean);
+        const ngrams = [];
+        for (let i = 0; i <= words.length - n; i++) {
+            ngrams.push(words.slice(i, i + n).join(' '));
+        }
+        return ngrams;
+    }
+
     readFile(file) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = () => reject(reader.error);
+            reader.onload = e => resolve(e.target.result);
             reader.readAsText(file, 'UTF-8');
         });
     }
 
-    // Generate n-grams from text
-    generateNgrams(text, n) {
-        // Tokenize into words (supports both English and Urdu)
-        const words = text.toLowerCase()
-            .split(/\s+/)
-            .map(w => w.replace(/[^\w\u0600-\u06FF'-]/g, ''))
-            .filter(w => w.length > 0);
+    render(container) {
+        if (!container) return;
 
-        const ngrams = [];
-        
-        // Create n-grams
-        for (let i = 0; i <= words.length - n; i++) {
-            const ngram = words.slice(i, i + n).join(' ');
-            if (ngram.split(' ').every(word => word.length > 0)) {
-                ngrams.push(ngram);
-            }
-        }
-
-        return ngrams;
-    }
-
-    // Render n-gram view
-    render(containerElement, data) {
-        if (this.ngramData.length === 0) {
-            containerElement.innerHTML = `
-                <div class="ngram-empty">
-                    <div style="font-size: 48px; margin-bottom: 12px;">📊</div>
-                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">No n-grams found</div>
-                    <div style="font-size: 14px; opacity: 0.7;">Try lowering the minimum frequency or check your files</div>
+        container.innerHTML = `
+        <div class="ngram-container">
+            <div class="ngram-header">
+                <div class="header-left">
+                    <h3>N-Gram Analysis (N=${this.currentN})</h3>
+                    <select class="file-selector" onchange="ngramModule.switchFile(this.value)">
+                        <option value="overall">📊 Overall (Combined)</option>
+                        ${this.files.length > 1 ? this.files.map(f => `<option value="${f.name}" ${this.currentView === f.name ? 'selected' : ''}>📄 ${f.name}</option>`).join('') : ''}
+                    </select>
                 </div>
-            `;
-            return;
-        }
-
-        const html = `
-            <div class="ngram-container">
-                <div class="ngram-header">
-                    <h3>${data.nValue}-Gram Analysis</h3>
-                    <div class="ngram-stats">
-                        <span class="stat-badge">N-Value: ${data.nValue}</span>
-                        <span class="stat-badge">Unique: ${data.uniqueNgrams}</span>
-                        <span class="stat-badge">Total: ${data.totalNgrams.toLocaleString()}</span>
-                    </div>
-                </div>
-
-                <div class="ngram-controls">
-                    <button class="ngram-btn" onclick="ngramModule.changeN(2)">2-Grams (Bigrams)</button>
-                    <button class="ngram-btn" onclick="ngramModule.changeN(3)">3-Grams (Trigrams)</button>
-                    <button class="ngram-btn" onclick="ngramModule.changeN(4)">4-Grams</button>
-                    <button class="ngram-btn" onclick="ngramModule.changeN(5)">5-Grams</button>
-                    <button class="ngram-btn" onclick="ngramModule.exportData()">📥 Export CSV</button>
-                </div>
-
-                <div class="ngram-tabs">
-                    <button class="ngram-tab active" onclick="ngramModule.switchTab('table')">📋 Table View</button>
-                    <button class="ngram-tab" onclick="ngramModule.switchTab('chart')">📊 Chart View</button>
-                    <button class="ngram-tab" onclick="ngramModule.switchTab('cloud')">☁️ Cloud View</button>
-                </div>
-
-                <div class="ngram-views">
-                    <div id="ngramTableView" class="ngram-view active">
-                        ${this.renderTableView()}
-                    </div>
-                    <div id="ngramChartView" class="ngram-view">
-                        ${this.renderChartView()}
-                    </div>
-                    <div id="ngramCloudView" class="ngram-view">
-                        ${this.renderCloudView()}
-                    </div>
+                <div class="search-box">
+                    <input type="text" placeholder="Search word..." oninput="ngramModule.handleSearch(this.value)" id="ngramSearch">
                 </div>
             </div>
 
-            <style>
-                .ngram-container {
-                    background: white;
-                    border-radius: 8px;
-                    overflow: hidden;
-                }
-
-                .ngram-header {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    padding: 20px 24px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    flex-wrap: wrap;
-                    gap: 12px;
-                }
-
-                .ngram-header h3 {
-                    margin: 0;
-                    font-size: 20px;
-                    font-weight: 600;
-                }
-
-                .ngram-stats {
-                    display: flex;
-                    gap: 12px;
-                    flex-wrap: wrap;
-                }
-
-                .stat-badge {
-                    background: rgba(255, 255, 255, 0.2);
-                    padding: 6px 12px;
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: 600;
-                }
-
-                .ngram-controls {
-                    padding: 16px 24px;
-                    background: #f8f9fa;
-                    display: flex;
-                    gap: 8px;
-                    flex-wrap: wrap;
-                    border-bottom: 1px solid #dee2e6;
-                }
-
-                .ngram-btn {
-                    padding: 8px 16px;
-                    background: white;
-                    border: 1px solid #dee2e6;
-                    border-radius: 6px;
-                    cursor: pointer;
-                    font-size: 13px;
-                    font-weight: 500;
-                    transition: all 0.2s;
-                }
-
-                .ngram-btn:hover {
-                    background: #667eea;
-                    color: white;
-                    border-color: #667eea;
-                }
-
-                .ngram-tabs {
-                    display: flex;
-                    background: #f8f9fa;
-                    border-bottom: 2px solid #dee2e6;
-                    padding: 0 24px;
-                    gap: 4px;
-                }
-
-                .ngram-tab {
-                    padding: 12px 20px;
-                    border: none;
-                    background: transparent;
-                    color: #495057;
-                    font-size: 13px;
-                    font-weight: 500;
-                    cursor: pointer;
-                    border-bottom: 3px solid transparent;
-                    transition: all 0.2s;
-                }
-
-                .ngram-tab:hover {
-                    background: #e9ecef;
-                    color: #667eea;
-                }
-
-                .ngram-tab.active {
-                    background: white;
-                    color: #667eea;
-                    border-bottom-color: #667eea;
-                    font-weight: 600;
-                }
-
-                .ngram-views {
-                    padding: 24px;
-                    min-height: 500px;
-                }
-
-                .ngram-view {
-                    display: none;
-                }
-
-                .ngram-view.active {
-                    display: block;
-                }
-
-                .ngram-table-wrapper {
-                    max-height: 600px;
-                    overflow-y: auto;
-                    border: 1px solid #dee2e6;
-                    border-radius: 8px;
-                }
-
-                .ngram-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                }
-
-                .ngram-table thead {
-                    position: sticky;
-                    top: 0;
-                    background: #f8f9fa;
-                    z-index: 10;
-                }
-
-                .ngram-table th {
-                    padding: 12px 16px;
-                    text-align: left;
-                    font-weight: 600;
-                    color: #495057;
-                    border-bottom: 2px solid #dee2e6;
-                    font-size: 13px;
-                    text-transform: uppercase;
-                }
-
-                .ngram-table td {
-                    padding: 12px 16px;
-                    border-bottom: 1px solid #e9ecef;
-                    font-size: 14px;
-                }
-
-                .ngram-table tbody tr:hover {
-                    background: #f8f9fa;
-                }
-
-                .ngram-table tbody tr:nth-child(even) {
-                    background: #fafbfc;
-                }
-
-                .ngram-rank {
-                    width: 60px;
-                    text-align: center;
-                    font-weight: 600;
-                    color: #6c757d;
-                }
-
-                .ngram-text {
-                    font-weight: 600;
-                    color: #495057;
-                    font-family: 'JameelNoori', 'Noto Nastaliq Urdu', serif;
-                    direction: rtl;
-                    text-align: right;
-                }
-
-                .ngram-frequency {
-                    width: 120px;
-                    text-align: center;
-                    font-weight: 600;
-                    color: #28a745;
-                }
-
-                .ngram-percentage {
-                    width: 120px;
-                    text-align: center;
-                    color: #6c757d;
-                }
-
-                .frequency-bar {
-                    width: 200px;
-                }
-
-                .bar-container {
-                    background: #e9ecef;
-                    height: 20px;
-                    border-radius: 4px;
-                    overflow: hidden;
-                }
-
-                .bar-fill {
-                    height: 100%;
-                    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    color: white;
-                    font-size: 11px;
-                    font-weight: 600;
-                    transition: width 0.3s ease;
-                }
-
-                .chart-display {
-                    max-height: 600px;
-                    overflow-y: auto;
-                }
-
-                .chart-row {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    margin-bottom: 8px;
-                    padding: 8px;
-                    border-radius: 6px;
-                    transition: background 0.2s;
-                }
-
-                .chart-row:hover {
-                    background: #f8f9fa;
-                }
-
-                .chart-label {
-                    width: 250px;
-                    font-weight: 600;
-                    color: #495057;
-                    font-size: 13px;
-                    font-family: 'JameelNoori', 'Noto Nastaliq Urdu', serif;
-                    direction: rtl;
-                    text-align: right;
-                }
-
-                .chart-bar-container {
-                    flex: 1;
-                    background: #e9ecef;
-                    height: 30px;
-                    border-radius: 6px;
-                    overflow: hidden;
-                }
-
-                .chart-bar {
-                    height: 100%;
-                    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-                    display: flex;
-                    align-items: center;
-                    padding: 0 12px;
-                    color: white;
-                    font-size: 12px;
-                    font-weight: 600;
-                    transition: width 0.3s ease;
-                }
-
-                .cloud-display {
-                    text-align: center;
-                    padding: 40px 20px;
-                    line-height: 2.5;
-                    background: #fafbfc;
-                    border-radius: 8px;
-                    border: 1px solid #e9ecef;
-                }
-
-                .cloud-ngram {
-                    display: inline-block;
-                    margin: 8px;
-                    padding: 8px 14px;
-                    border-radius: 6px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: all 0.3s ease;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    color: white;
-                    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-                    font-family: 'JameelNoori', 'Noto Nastaliq Urdu', serif;
-                }
-
-                .cloud-ngram:hover {
-                    transform: translateY(-4px) scale(1.1);
-                    box-shadow: 0 4px 16px rgba(102, 126, 234, 0.5);
-                }
-
-                .ngram-empty {
-                    text-align: center;
-                    padding: 60px 20px;
-                    color: #6c757d;
-                }
-
-                @media (max-width: 768px) {
-                    .chart-label {
-                        width: 150px;
-                        font-size: 11px;
-                    }
-
-                    .frequency-bar {
-                        width: 100px;
-                    }
-                }
-            </style>
-        `;
-
-        containerElement.innerHTML = html;
-    }
-
-    // Render table view
-    renderTableView() {
-        const rows = this.ngramData.slice(0, 200).map((item, index) => `
-            <tr>
-                <td class="ngram-rank">${index + 1}</td>
-                <td class="ngram-text">${this.escapeHtml(item.ngram)}</td>
-                <td class="ngram-frequency">${item.frequency}</td>
-                <td class="ngram-percentage">${item.percentage}%</td>
-                <td class="frequency-bar">
-                    <div class="bar-container">
-                        <div class="bar-fill" style="width: ${Math.min(item.percentage * 10, 100)}%">
-                            ${item.frequency > 5 ? item.frequency : ''}
-                        </div>
-                    </div>
-                </td>
-            </tr>
-        `).join('');
-
-        return `
-            <div class="ngram-table-wrapper">
-                <table class="ngram-table">
-                    <thead>
-                        <tr>
-                            <th>Rank</th>
-                            <th>N-Gram</th>
-                            <th>Frequency</th>
-                            <th>Percentage</th>
-                            <th>Distribution</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${rows}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }
-
-    // Render chart view
-    renderChartView() {
-        const maxFreq = Math.max(...this.ngramData.map(n => n.frequency));
-        const top50 = this.ngramData.slice(0, 50);
-
-        const rows = top50.map(item => {
-            const width = (item.frequency / maxFreq) * 100;
-            return `
-                <div class="chart-row">
-                    <div class="chart-label">${this.escapeHtml(item.ngram)}</div>
-                    <div class="chart-bar-container">
-                        <div class="chart-bar" style="width: ${width}%">
-                            ${item.frequency}
-                        </div>
-                    </div>
+            <div class="ngram-toolbar">
+                <div class="n-selector">
+                    <button class="n-btn ${this.currentN === 2 ? 'active' : ''}" onclick="ngramModule.changeN(2)">2-Gram</button>
+                    <button class="n-btn ${this.currentN === 3 ? 'active' : ''}" onclick="ngramModule.changeN(3)">3-Gram</button>
+                    <button class="n-btn ${this.currentN === 4 ? 'active' : ''}" onclick="ngramModule.changeN(4)">4-Gram</button>
                 </div>
-            `;
-        }).join('');
+                <div class="view-tabs">
+                    <button class="tab-btn active" id="tab-table" onclick="ngramModule.switchTab('table')">Table</button>
+                    <button class="tab-btn" id="tab-chart" onclick="ngramModule.switchTab('chart')">Chart</button>
+                    <button class="export-btn" onclick="ngramModule.exportData()">CSV</button>
+                </div>
+            </div>
 
-        return `<div class="chart-display">${rows}</div>`;
-    }
+            <div class="ngram-content">
+                <div class="ngram-view active" id="ngramTableView">${this.renderTableView()}</div>
+                <div class="ngram-view" id="ngramChartView">${this.renderChartView()}</div>
+            </div>
+        </div>
 
-    // Render cloud view
-    renderCloudView() {
-        const maxFreq = Math.max(...this.ngramData.map(n => n.frequency));
-        const top100 = this.ngramData.slice(0, 100);
-
-        const ngrams = top100.map(item => {
-            const size = 12 + (item.frequency / maxFreq) * 30;
-            const opacity = 0.6 + (item.frequency / maxFreq) * 0.4;
+        <style>
+            .ngram-container { font-family: sans-serif; border: 1px solid #ccc; border-radius: 8px; background: #fff; overflow: hidden; }
+            .ngram-header { padding: 15px; background: #396fa5ff; color: white; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+            .file-selector { padding: 8px; border-radius: 4px; border: none; background: #34495e; color: white; cursor: pointer; }
+            .search-box input { padding: 8px 12px; border-radius: 20px; border: 1px solid #ddd; width: 200px; }
             
-            return `
-                <span class="cloud-ngram" 
-                      style="font-size: ${size}px; opacity: ${opacity}"
-                      title="${item.ngram}: ${item.frequency} occurrences">
-                    ${this.escapeHtml(item.ngram)}
-                </span>
-            `;
-        }).join('');
+            .ngram-toolbar { padding: 10px; background: #f4f4f4; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; }
+            .n-btn, .tab-btn, .export-btn { padding: 6px 12px; margin-right: 4px; cursor: pointer; border: 1px solid #ccc; background: white; border-radius: 4px; }
+            .n-btn.active, .tab-btn.active { background: #3498db; color: white; border-color: #2980b9; }
 
-        return `<div class="cloud-display">${ngrams}</div>`;
+            .table-wrapper { max-height: 500px; overflow-y: auto; }
+            .ngram-table { width: 100%; border-collapse: collapse; }
+            .ngram-table th, .ngram-table td { 
+                padding: 12px; 
+                border: 1px solid #eee; /* Vertical lines added here */
+                text-align: left; 
+            }
+            .ngram-table thead th { background: #f8f9fa; position: sticky; top: 0; z-index: 1; }
+            .ngram-text { direction: rtl; text-align: right; font-weight: bold; color: #2c3e50; background: #fdfdfd; }
+            
+            .chart-row { display: flex; align-items: center; margin-bottom: 8px; padding: 0 15px; }
+            .chart-label { width: 150px; text-align: right; direction: rtl; padding-right: 10px; font-size: 14px; }
+            .chart-bar-bg { flex: 1; background: #eee; height: 20px; border-radius: 10px; overflow: hidden; }
+            .chart-bar-fill { background: #3498db; height: 100%; color: white; font-size: 10px; display: flex; align-items: center; padding-left: 5px; transition: width 0.3s; }
+            
+            .ngram-view { display: none; }
+            .ngram-view.active { display: block; padding: 15px 0; }
+        </style>
+        `;
     }
 
-    // Switch between tabs
-    switchTab(tabName) {
-        document.querySelectorAll('.ngram-tab').forEach(tab => {
-            tab.classList.remove('active');
-        });
-        document.querySelectorAll('.ngram-view').forEach(view => {
-            view.classList.remove('active');
-        });
-
-        const activeTab = Array.from(document.querySelectorAll('.ngram-tab')).find(
-            tab => tab.textContent.toLowerCase().includes(tabName)
-        );
-        if (activeTab) activeTab.classList.add('active');
-
-        document.getElementById(`ngram${tabName.charAt(0).toUpperCase() + tabName.slice(1)}View`).classList.add('active');
+    renderTableView() {
+        if (this.filteredData.length === 0) return '<p style="text-align:center;padding:20px;">No results match your search.</p>';
+        return `
+        <div class="table-wrapper">
+            <table class="ngram-table">
+                <thead>
+                    <tr><th>#</th><th style="text-align:right">N-Gram Phrase</th><th>Freq</th><th>%</th></tr>
+                </thead>
+                <tbody>
+                    ${this.filteredData.slice(0, 200).map((n, i) => `
+                    <tr>
+                        <td style="color:#999;width:40px">${i + 1}</td>
+                        <td class="ngram-text">${this.escapeHtml(n.ngram)}</td>
+                        <td style="font-weight:bold;width:60px">${n.frequency}</td>
+                        <td style="color:#666;width:60px">${n.percentage}%</td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
     }
 
-    // Change n-gram size
-    async changeN(n) {
-        const container = document.getElementById('resultsArea');
-        const minFreq = document.getElementById('minFreq') ? parseInt(document.getElementById('minFreq').value) : 2;
-        const query = document.getElementById('searchQuery') ? document.getElementById('searchQuery').value : '';
-
-        if (window.selectedFiles && window.selectedFiles.length > 0) {
-            container.innerHTML = `
-                <div style="text-align: center; padding: 60px 20px; color: #6c757d;">
-                    <div style="font-size: 48px; margin-bottom: 12px;">⏳</div>
-                    <div style="font-size: 16px; font-weight: 600;">Generating ${n}-grams...</div>
+    renderChartView() {
+        if (this.filteredData.length === 0) return '';
+        const max = Math.max(...this.filteredData.map(n => n.frequency));
+        return this.filteredData.slice(0, 40).map(n => `
+            <div class="chart-row">
+                <div class="chart-label">${this.escapeHtml(n.ngram)}</div>
+                <div class="chart-bar-bg">
+                    <div class="chart-bar-fill" style="width:${(n.frequency / max) * 100}%">${n.frequency}</div>
                 </div>
-            `;
-
-            const data = await this.processFiles(window.selectedFiles, query, minFreq, n);
-            this.render(container, data);
-        }
+            </div>`).join('');
     }
 
-    // Export to CSV
+    handleSearch(val) {
+        this.updateFilteredData(val);
+        document.getElementById('ngramTableView').innerHTML = this.renderTableView();
+        document.getElementById('ngramChartView').innerHTML = this.renderChartView();
+    }
+
+    async switchFile(val) {
+        this.currentView = val;
+        const searchVal = document.getElementById('ngramSearch').value;
+        this.handleSearch(searchVal);
+    }
+
+    async changeN(n) {
+        this.currentN = n;
+        const results = document.getElementById('resultsArea');
+        results.innerHTML = '<div style="padding:40px;text-align:center">Processing N-Grams...</div>';
+        await this.processFiles(n);
+        this.render(results);
+    }
+
+    switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.ngram-view').forEach(v => v.classList.remove('active'));
+        document.getElementById(`tab-${tab}`).classList.add('active');
+        document.getElementById(`ngram${tab.charAt(0).toUpperCase() + tab.slice(1)}View`).classList.add('active');
+    }
+
     exportData() {
-        const csvRows = [
-            ['Rank', 'N-Gram', 'Frequency', 'Percentage'].join(',')
-        ];
-
-        this.ngramData.forEach((item, index) => {
-            csvRows.push([
-                index + 1,
-                `"${item.ngram.replace(/"/g, '""')}"`,
-                item.frequency,
-                item.percentage
-            ].join(','));
-        });
-
-        const csvContent = csvRows.join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
+        const csv = "Rank,Phrase,Frequency,Percentage\n" + 
+                    this.filteredData.map((n, i) => `${i+1},"${n.ngram}",${n.frequency},${n.percentage}`).join("\n");
+        const blob = new Blob([csv], { type: 'text/csv' });
         const a = document.createElement('a');
-        a.href = url;
-        a.download = `ngram_${this.currentN}_${new Date().toISOString().slice(0, 10)}.csv`;
-        document.body.appendChild(a);
+        a.href = URL.createObjectURL(blob);
+        a.download = `ngram_${this.currentView}_n${this.currentN}.csv`;
         a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
     }
 
-    // Escape HTML
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
+    escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 }
 
-// Export for use in main application
-const ngramModule = new NgramModule()
+const ngramModule = new NgramModule();
