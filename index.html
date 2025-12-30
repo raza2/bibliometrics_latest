@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern AntConc</title>
+    
+    <style>
+        /* Font Face Declaration - Make sure the path matches your folder structure */
+        @font-face {
+            font-family: 'JameelNoori';
+            src: url('fonts/Jameel%20Noori%20Nastaleeq%20Regular.ttf') format('ttf'),
+                url('fonts/Jameel%20Noori%20Nastaleeq%20Regular.ttf') format('ttf'),
+                url('fonts/Jameel%20Noori%20Nastaleeq%20Regular.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        body {
+            font-family: 'JameelNoori', 'Noto Nastaliq Urdu', 'Segoe UI', sans-serif;
+            /* rest of your styles */
+        }
+
+        .cloud-display,
+        .list-word,
+        .thermal-word,
+        .kwic-col-left,
+        .kwic-col-keyword,
+        .kwic-col-right {
+            direction: rtl;
+            font-family: 'JameelNoori', 'Noto Nastaliq Urdu', serif;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .header-info {
+            display: flex;
+            gap: 24px;
+            font-size: 14px;
+        }
+
+        .header-info span {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 6px 12px;
+            border-radius: 6px;
+        }
+
+        .main-nav {
+            background: #f8f9fa;
+            border-bottom: 2px solid #e9ecef;
+            padding: 0;
+            display: flex;
+            overflow-x: auto;
+        }
+
+        .nav-btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 12px 16px;
+            border: none;
+            background: transparent;
+            color: #495057;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+        }
+
+        .nav-btn:hover {
+            background: #e9ecef;
+            color: #667eea;
+        }
+
+        .nav-btn.active {
+            background: white;
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .chart-selector {
+            margin-bottom: 24px;
+            display: none;
+        }
+
+        .chart-selector.show {
+            display: block;
+        }
+
+        .chart-selector-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .chart-dropdown {
+            padding: 12px 16px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 300px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .chart-dropdown:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .content-area {
+            padding: 32px;
+            min-height: 500px;
+        }
+
+        .file-controls {
+            background: #f8f9fa;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            border: 2px dashed #dee2e6;
+        }
+
+        .file-input-wrapper {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .file-input-group {
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .file-input-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .file-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .file-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .file-button:active {
+            transform: translateY(0);
+        }
+
+        .file-count {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #e7f3ff;
+            color: #0066cc;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .search-controls {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .search-input {
+            padding: 12px 16px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .freq-input {
+            padding: 12px 16px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 200px;
+        }
+
+        .search-btn {
+            padding: 12px 32px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .results-area {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 24px;
+            min-height: 400px;
+            border: 1px solid #dee2e6;
+        }
+
+        .placeholder {
+            text-align: center;
+            color: #6c757d;
+            padding: 60px 20px;
+        }
+
+        .placeholder-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .placeholder-text {
+            font-size: 16px;
+            margin-bottom: 8px;
+        }
+
+        .placeholder-subtext {
+            font-size: 14px;
+            opacity: 0.7;
+        }
+
+        @media (max-width: 768px) {
+            .search-controls {
+                grid-template-columns: 1fr;
+            }
+
+            .freq-input {
+                width: 100%;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 12px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Modern AntConc</h1>
+            <div class="header-info">
+                <span id="totalFiles">Files: 0</span>
+                <span id="totalTokens">Tokens: 0</span>
+                <span id="totalHits">Hits: 0</span>
+            </div>
+        </div>
+
+        <nav class="main-nav">
+            <button class="nav-btn active" data-view="kwic">KWIC</button>
+            <button class="nav-btn" data-view="plot">Plot</button>
+            <button class="nav-btn" data-view="file-view">File View</button>
+            <button class="nav-btn" data-view="cluster">Cluster</button>
+            <button class="nav-btn" data-view="n-gram">N-Gram</button>
+            <button class="nav-btn" data-view="collocate">Collocate</button>
+            <button class="nav-btn" data-view="word">Word</button>
+            <button class="nav-btn" data-view="keyword">Keyword</button>
+            <button class="nav-btn" data-view="wordcloud">Wordcloud</button>
+            <button class="nav-btn" data-view="bibliometrics">Bibliometrics</button>
+            <button class="nav-btn" data-view="POS">POS</button>
+            <button class="nav-btn" data-view="tokentype">Token Type</button>
+            <button class="nav-btn" data-view="morphology">Morphology Tree</button>
+
+
+
+        </nav>
+
+        <div class="content-area">
+            <div class="file-controls">
+                <div class="file-input-wrapper">
+                    <div class="file-input-group">
+                        <label class="file-input-label">Select Corpus Files</label>
+                        <input type="file" id="fileInput" class="file-input" multiple accept=".txt,.xlsx,.xls,.csv">
+                        <label for="fileInput" class="file-button">
+                            📁 Choose Files
+                        </label>
+                        <span class="file-count" id="fileCount">No files selected</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="search-controls">
+                <input type="text" class="search-input" id="searchQuery" placeholder="Enter search term...">
+                <input type="number" class="freq-input" id="minFreq" placeholder="Min. frequency" value="1" min="1">
+                <button class="search-btn" id="searchBtn">🔍 Search</button>
+            </div>
+
+            <div class="chart-selector" id="chartSelector">
+                <label class="chart-selector-label">Select Chart Type</label>
+                <select class="chart-dropdown" id="chartDropdown">
+                    <option value="boxed">🟦 Boxed Chart</option>
+                    <option value="bubble">⚪ Bubble Chart</option>
+                </select>
+            </div>
+
+            <div class="results-area" id="resultsArea">
+                <div class="placeholder">
+                    <div class="placeholder-icon">📚</div>
+                    <div class="placeholder-text">Welcome to Modern AntConc</div>
+                    <div class="placeholder-subtext">Select files and enter a search term to begin analysis</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        let selectedFiles = [];
+        let currentView = 'kwic';
+        let currentChart = 'boxed';
+
+        // File handling
+        const fileInput = document.getElementById('fileInput');
+        const fileCount = document.getElementById('fileCount');
+        const searchBtn = document.getElementById('searchBtn');
+        const resultsArea = document.getElementById('resultsArea');
+
+        fileInput.addEventListener('change', (e) => {
+            selectedFiles = Array.from(e.target.files);
+            updateFileCount();
+            
+            // ADD THIS: Automatically analyze n-grams as soon as files are chosen
+            if (currentView === 'n-gram') {
+                ngramModule.init(selectedFiles);
+            }
+        });
+
+        function updateFileCount() {
+            const count = selectedFiles.length;
+            fileCount.textContent = count === 0 ? 'No files selected' : `${count} file${count > 1 ? 's' : ''} selected`;
+            document.getElementById('totalFiles').textContent = `Files: ${count}`;
+        }
+
+        // Navigation
+        const navButtons = document.querySelectorAll('.nav-btn');
+        const chartSelector = document.getElementById('chartSelector');
+        const chartDropdown = document.getElementById('chartDropdown');
+
+        navButtons.forEach(btn => {
+            btn.addEventListener('click', async () => {
+
+                navButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                currentView = btn.dataset.view;
+
+                if (currentView === 'bibliometrics') {
+                    chartSelector.classList.add('show');
+                } else {
+                    chartSelector.classList.remove('show');
+                }
+
+                if (currentView === 'n-gram') {
+                    if (selectedFiles.length > 0) {
+                        ngramModule.init(selectedFiles);
+                    } else {
+                        updateView();
+                    }
+                    return;
+                }
+
+                if (currentView === 'POS') {
+                    await posModule.init();   // ✅ NOW VALID
+                    updateView();
+                    return;
+                }
+
+                const query = document.getElementById('searchQuery').value;
+                const minFreq = document.getElementById('minFreq').value;
+
+                if (query && selectedFiles.length > 0) {
+                    performSearch(query, minFreq);
+                } else {
+                    updateView();
+                }
+            });
+        });
+
+
+        chartDropdown.addEventListener('change', (e) => {
+            currentChart = e.target.value;
+            const query = document.getElementById('searchQuery').value;
+            const minFreq = document.getElementById('minFreq').value;
+            
+            if (query && selectedFiles.length > 0) {
+                performSearch(query, minFreq);
+            }
+        });
+
+        searchBtn.addEventListener('click', () => {
+            const query = document.getElementById('searchQuery').value;
+            const minFreq = document.getElementById('minFreq').value;
+
+            if (!query) {
+                alert('Please enter a search term');
+                return;
+            }
+
+            if (selectedFiles.length === 0) {
+                alert('Please select at least one file');
+                return;
+            }
+
+            performSearch(query, minFreq);
+        });
+
+        async function performSearch(query, minFreq) {
+            resultsArea.innerHTML = `
+                <div class="placeholder">
+                    <div class="placeholder-icon">⏳</div>
+                    <div class="placeholder-text">Processing search for "${query}"</div>
+                    <div class="placeholder-subtext">Minimum frequency: ${minFreq} | View: ${currentView.toUpperCase()}</div>
+                </div>
+            `;
+
+            try {
+                if (currentView === 'kwic') {
+                    const data = await kwicModule.processFiles(selectedFiles, query, minFreq);
+                    kwicModule.render(resultsArea, data);
+                    document.getElementById('totalHits').textContent = `Hits: ${data.totalHits}`;
+                    document.getElementById('totalTokens').textContent = `Tokens: ${data.totalTokens.toLocaleString()}`;
+                } else if (currentView === 'plot') {
+                    const data = await plotModule.processFiles(selectedFiles, query, minFreq);
+                    plotModule.render(resultsArea, data);
+                    document.getElementById('totalHits').textContent = `Hits: ${data.totalHits}`;
+                } else if (currentView === 'file-view') {
+                    const data = await fileViewModule.processFiles(selectedFiles, query, minFreq);
+                    fileViewModule.render(resultsArea, data);
+                    document.getElementById('totalHits').textContent = `Hits: ${data.totalHits}`;
+                } else if (currentView === 'cluster') {
+                    const data = await clusterModule.processFiles(selectedFiles, query, minFreq);
+                    clusterModule.render(resultsArea, data);
+                } else if (currentView === 'wordcloud') {
+                    const data = await wordCloudModule.processFiles(selectedFiles, query, minFreq);
+                    wordCloudModule.render(resultsArea, data);
+                } else if (currentView === 'word') {
+                    const data = await wordModule.processFiles(selectedFiles, query, minFreq);
+                    wordModule.renderWordList(resultsArea, data);
+                } else if (currentView === 'keyword') {
+                    const data = await wordModule.processFiles(selectedFiles, query, minFreq);
+                    wordModule.renderWordList(resultsArea, data);
+                } else if (currentView === 'n-gram') {
+                    const data = await ngramModule.init(selectedFiles);   
+                    ngramModule.render(resultsArea, data);
+                } else if (currentView === 'collocate') {
+                    const data = await collocateModule.processFiles(selectedFiles, query, minFreq, 5);
+                    collocateModule.render(resultsArea, data);
+                } else if (currentView === 'morphology') {
+                    const data = await morphologyModule.processFiles(selectedFiles, query, minFreq);
+                    morphologyModule.render(resultsArea, data);
+                    document.getElementById('totalHits').textContent = `Words: ${data.totalHits}`;
+                } else if (currentView === 'tokentype') {
+                    const data = await tokenTypeModule.processFiles(selectedFiles, query, minFreq);
+                    tokenTypeModule.render(resultsArea, data);
+                    document.getElementById('totalHits').textContent = `Tokens: ${data.totalHits}`;
+                } else if (currentView === 'POS') {
+                    const data = await posModule.processFiles(selectedFiles);
+                    posModule.render(resultsArea, data);
+
+                    document.getElementById('totalHits').textContent =
+                        `Words: ${data.results.length}`;
+                    
+                } else if (currentView === 'bibliometrics') {
+                    const data = await bibliometricsModule.processFiles(selectedFiles, query, minFreq, currentChart);
+                    bibliometricsModule.render(resultsArea, data, currentChart);
+                    
+                }  else {
+                    loadView(currentView, query, minFreq);
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                resultsArea.innerHTML = `
+                    <div class="placeholder">
+                        <div class="placeholder-icon">❌</div>
+                        <div class="placeholder-text">Error processing search</div>
+                        <div class="placeholder-subtext">${error.message}</div>
+                    </div>
+                `;
+            }
+        }
+
+        function updateView() {
+            resultsArea.innerHTML = `
+                <div class="placeholder">
+                    <div class="placeholder-icon">📊</div>
+                    <div class="placeholder-text">${currentView.toUpperCase()} View${currentView === 'bibliometrics' ? ` - ${currentChart}` : ''}</div>
+                    <div class="placeholder-subtext">Enter a search term and click Search to see results</div>
+                </div>
+            `;
+        }
+
+        function loadView(viewName, query, minFreq) {
+            resultsArea.innerHTML = `
+                <div class="placeholder">
+                    <div class="placeholder-icon">🚧</div>
+                    <div class="placeholder-text">${viewName.toUpperCase()} View</div>
+                    <div class="placeholder-subtext">This module is under development</div>
+                </div>
+            `;
+        }
+    </script>
+
+    <!-- Include external modules -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <script src="kwic.js"></script>
+    <script src="plot.js"></script>
+    <script src="ngram.js"></script>
+    <script src="fileview.js"></script>
+    <script src="cluster.js"></script>
+    <script src="wordcloud.js"></script>
+    <script src="word.js"></script>
+    <script src="collocate.js"></script>
+    <script src="bibliometrics.js"></script>
+
+    <script src="POS.js"></script>   <!-- ✅ MUST LOAD -->
+    <script src="morphology.js"></script>
+    <script src="tokentype.js"></script>
+    
+
+
+
+</body>
+</html>
