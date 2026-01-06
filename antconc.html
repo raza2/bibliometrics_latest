@@ -19,7 +19,10 @@
 
         body {
             font-family: 'JameelNoori', 'Noto Nastaliq Urdu', 'Segoe UI', sans-serif;
-            /* rest of your styles */
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
         }
 
         .cloud-display,
@@ -52,6 +55,7 @@
         .header h1 {
             font-size: 28px;
             font-weight: 600;
+            margin: 0;
         }
 
         .header-info {
@@ -195,6 +199,15 @@
             transform: translateY(0);
         }
 
+        .file-button.clear-btn {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+        }
+
+        .file-button.clear-btn:hover {
+            box-shadow: 0 6px 16px rgba(220, 53, 69, 0.4);
+        }
+
         .file-count {
             display: inline-block;
             padding: 6px 12px;
@@ -207,7 +220,7 @@
 
         .search-controls {
             display: grid;
-            grid-template-columns: 1fr auto auto;
+            grid-template-columns: 1fr auto auto auto;
             gap: 12px;
             margin-bottom: 24px;
         }
@@ -250,6 +263,34 @@
         .search-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .export-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .export-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4);
+        }
+
+        .export-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
 
         .results-area {
@@ -322,31 +363,35 @@
             <button class="nav-btn" data-view="wordcloud">Wordcloud</button>
             <button class="nav-btn" data-view="bibliometrics">Bibliometrics</button>
             <button class="nav-btn" data-view="POS">POS</button>
-            <button class="nav-btn" data-view="tokentype">Token Type</button>
-            <button class="nav-btn" data-view="morphology">Morphology Tree</button>
-
-
-
         </nav>
 
         <div class="content-area">
-            <div class="file-controls">
-                <div class="file-input-wrapper">
-                    <div class="file-input-group">
-                        <label class="file-input-label">Select Corpus Files</label>
+        <div class="file-controls">
+            <div class="file-input-wrapper">
+                <div class="file-input-group">
+                    <label class="file-input-label">Select Corpus Files</label>
+                    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
                         <input type="file" id="fileInput" class="file-input" multiple accept=".txt,.xlsx,.xls,.csv">
+                        
                         <label for="fileInput" class="file-button">
                             📁 Choose Files
                         </label>
+
+                        <button class="file-button clear-btn" id="clearBtn" type="button">
+                            🗑️ Clear Files
+                        </button>
+
                         <span class="file-count" id="fileCount">No files selected</span>
                     </div>
                 </div>
             </div>
+        </div>
 
             <div class="search-controls">
-                <input type="text" class="search-input" id="searchQuery" placeholder="Enter search term...">
+                <input type="text" class="search-input" id="searchQuery" placeholder="Enter search term (optional for some modules)...">
                 <input type="number" class="freq-input" id="minFreq" placeholder="Min. frequency" value="1" min="1">
                 <button class="search-btn" id="searchBtn">🔍 Search</button>
+                <button class="export-btn" id="exportBtn" disabled>📥 Export</button>
             </div>
 
             <div class="chart-selector" id="chartSelector">
@@ -357,11 +402,51 @@
                 </select>
             </div>
 
+            <div class="chart-selector" id="posTagSelector">
+                <label class="chart-selector-label">Filter by POS Tag</label>
+                <select class="chart-dropdown" id="posTagDropdown">
+                    <option value="all">All Tags</option>
+                    <option value="NN">Noun (NN)</option>
+                    <option value="PR">Pronoun (PR)</option>
+                    <option value="VB">Verb (VB)</option>
+                    <option value="ADJ">Adjective (ADJ)</option>
+                    <option value="ADV">Adverb (ADV)</option>
+                    <option value="P">Preposition (P)</option>
+                    <option value="CC">Conjunction (CC)</option>
+                    <option value="AUXA">Auxiliary (AUXA)</option>
+                    <option value="TA">Tense Aspect (TA)</option>
+                    <option value="KER">Verb Karna (KER)</option>
+                    <option value="SE">Postposition SE (SE)</option>
+                    <option value="CA">Case Marker (CA)</option>
+                    <option value="MO">Modal (MO)</option>
+                    <option value="Q">Quantifier (Q)</option>
+                    <option value="INT">Intensifier (INT)</option>
+                    <option value="WALA">Wala Suffix (WALA)</option>
+                    <option value="NEG">Negation (NEG)</option>
+                    <option value="SM">Sentence Marker (SM)</option>
+                    <option value="RDP">Reduplication (RDP)</option>
+                    <option value="DATE">Date (DATE)</option>
+                    <option value="TIME">Time (TIME)</option>
+                    <option value="NUM">Number (NUM)</option>
+                    <option value="U">Unknown (U)</option>
+                    <option value="SYM">Symbol (SYM)</option>
+                    <option value="G">Foreign Word (G)</option>
+                    <option value="PUNCT">Punctuation (PUNCT)</option>
+                </select>
+            </div>
+
+            <div class="chart-selector" id="posTypeSelector">
+                <label class="chart-selector-label">Filter by POS Type</label>
+                <select class="chart-dropdown" id="posTypeDropdown">
+                    <option value="all">All Types</option>
+                </select>
+            </div>
+
             <div class="results-area" id="resultsArea">
                 <div class="placeholder">
                     <div class="placeholder-icon">📚</div>
                     <div class="placeholder-text">Welcome to Modern AntConc</div>
-                    <div class="placeholder-subtext">Select files and enter a search term to begin analysis</div>
+                    <div class="placeholder-subtext">Select files to begin analysis</div>
                 </div>
             </div>
         </div>
@@ -372,20 +457,64 @@
         let selectedFiles = [];
         let currentView = 'kwic';
         let currentChart = 'boxed';
+        let currentPOSTag = 'all';
+        let currentPOSType = 'all';
+        let currentResults = null;
+
+        // Modules that don't require search query
+        const NO_SEARCH_MODULES = ['n-gram', 'word', 'keyword', 'wordcloud', 'POS', 'bibliometrics'];
 
         // File handling
         const fileInput = document.getElementById('fileInput');
         const fileCount = document.getElementById('fileCount');
+        const clearBtn = document.getElementById('clearBtn');
         const searchBtn = document.getElementById('searchBtn');
+        const exportBtn = document.getElementById('exportBtn');
         const resultsArea = document.getElementById('resultsArea');
+        const posTagSelector = document.getElementById('posTagSelector');
+        const posTagDropdown = document.getElementById('posTagDropdown');
+        const posTypeSelector = document.getElementById('posTypeSelector');
+        const posTypeDropdown = document.getElementById('posTypeDropdown');
+
+        // Clear button functionality
+        clearBtn.addEventListener('click', () => {
+            selectedFiles = [];
+            fileInput.value = '';
+            currentResults = null;
+            exportBtn.disabled = true;
+            updateFileCount();
+            
+            // Reset stats
+            document.getElementById('totalFiles').textContent = 'Files: 0';
+            document.getElementById('totalTokens').textContent = 'Tokens: 0';
+            document.getElementById('totalHits').textContent = 'Hits: 0';
+            
+            // Show placeholder
+            resultsArea.innerHTML = `
+                <div class="placeholder">
+                    <div class="placeholder-icon">📚</div>
+                    <div class="placeholder-text">Welcome to Modern AntConc</div>
+                    <div class="placeholder-subtext">Select files to begin analysis</div>
+                </div>
+            `;
+        });
 
         fileInput.addEventListener('change', (e) => {
             selectedFiles = Array.from(e.target.files);
             updateFileCount();
             
-            // ADD THIS: Automatically analyze n-grams as soon as files are chosen
-            if (currentView === 'n-gram') {
-                ngramModule.init(selectedFiles);
+            // Automatically process based on current view
+            if (selectedFiles.length > 0) {
+                const query = document.getElementById('searchQuery').value;
+                const minFreq = document.getElementById('minFreq').value;
+                
+                // For modules that don't need search query, process immediately
+                if (NO_SEARCH_MODULES.includes(currentView)) {
+                    performSearch(query, minFreq);
+                } else if (query) {
+                    // For modules that need search query, only process if query exists
+                    performSearch(query, minFreq);
+                }
             }
         });
 
@@ -402,7 +531,6 @@
 
         navButtons.forEach(btn => {
             btn.addEventListener('click', async () => {
-
                 navButtons.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
 
@@ -414,40 +542,79 @@
                     chartSelector.classList.remove('show');
                 }
 
-                if (currentView === 'n-gram') {
-                    if (selectedFiles.length > 0) {
-                        ngramModule.init(selectedFiles);
+                if (currentView === 'POS') {
+                    posTagSelector.classList.add('show');
+                    posTypeSelector.classList.add('show');
+                } else {
+                    posTagSelector.classList.remove('show');
+                    posTypeSelector.classList.remove('show');
+                }
+
+                // Auto-process if files are selected
+                if (selectedFiles.length > 0) {
+                    const query = document.getElementById('searchQuery').value;
+                    const minFreq = document.getElementById('minFreq').value;
+                    
+                    // For modules that don't need search query, process immediately
+                    if (NO_SEARCH_MODULES.includes(currentView)) {
+                        performSearch(query, minFreq);
+                    } else if (query) {
+                        // For modules that need search query, only process if query exists
+                        performSearch(query, minFreq);
                     } else {
                         updateView();
                     }
-                    return;
-                }
-
-                if (currentView === 'POS') {
-                    await posModule.init();   // ✅ NOW VALID
-                    updateView();
-                    return;
-                }
-
-                const query = document.getElementById('searchQuery').value;
-                const minFreq = document.getElementById('minFreq').value;
-
-                if (query && selectedFiles.length > 0) {
-                    performSearch(query, minFreq);
                 } else {
                     updateView();
                 }
             });
         });
 
-
         chartDropdown.addEventListener('change', (e) => {
             currentChart = e.target.value;
             const query = document.getElementById('searchQuery').value;
             const minFreq = document.getElementById('minFreq').value;
             
-            if (query && selectedFiles.length > 0) {
+            if (selectedFiles.length > 0) {
                 performSearch(query, minFreq);
+            }
+        });
+
+        posTagDropdown.addEventListener('change', (e) => {
+            currentPOSTag = e.target.value;
+            const query = document.getElementById('searchQuery').value;
+            const minFreq = document.getElementById('minFreq').value;
+            
+            if (selectedFiles.length > 0 && currentView === 'POS') {
+                performSearch(query, minFreq);
+            }
+        });
+
+        posTypeDropdown.addEventListener('change', (e) => {
+            currentPOSType = e.target.value;
+            const query = document.getElementById('searchQuery').value;
+            const minFreq = document.getElementById('minFreq').value;
+            
+            if (selectedFiles.length > 0 && currentView === 'POS') {
+                performSearch(query, minFreq);
+            }
+        });
+
+        // Export functionality
+        exportBtn.addEventListener('click', () => {
+            if (!currentResults) {
+                alert('No results to export');
+                return;
+            }
+
+            const exportFormat = prompt('Choose export format:\n1. CSV\n2. Excel\n3. JSON\n\nEnter 1, 2, or 3:', '1');
+            
+            if (exportFormat === '1') {
+                exportToCSV(currentResults);
+            } else if (exportFormat === '2') {
+                exportToExcel(currentResults);
+            } else if (exportFormat === '3') {
+                exportToJSON(currentResults);
             }
         });
 
@@ -455,7 +622,8 @@
             const query = document.getElementById('searchQuery').value;
             const minFreq = document.getElementById('minFreq').value;
 
-            if (!query) {
+            // Allow search without query for certain modules
+            if (!query && !NO_SEARCH_MODULES.includes(currentView)) {
                 alert('Please enter a search term');
                 return;
             }
@@ -469,67 +637,158 @@
         });
 
         async function performSearch(query, minFreq) {
+            const needsQuery = !NO_SEARCH_MODULES.includes(currentView);
+            const displayQuery = query || 'all data';
+            
             resultsArea.innerHTML = `
                 <div class="placeholder">
                     <div class="placeholder-icon">⏳</div>
-                    <div class="placeholder-text">Processing search for "${query}"</div>
-                    <div class="placeholder-subtext">Minimum frequency: ${minFreq} | View: ${currentView.toUpperCase()}</div>
+                    <div class="placeholder-text">Processing ${needsQuery && query ? `search for "${query}"` : currentView.toUpperCase()}...</div>
+                    <div class="placeholder-subtext">${query ? `Minimum frequency: ${minFreq} | ` : ''}View: ${currentView.toUpperCase()}</div>
                 </div>
             `;
 
             try {
                 if (currentView === 'kwic') {
+                    if (!query) {
+                        resultsArea.innerHTML = `
+                            <div class="placeholder">
+                                <div class="placeholder-icon">🔍</div>
+                                <div class="placeholder-text">KWIC View</div>
+                                <div class="placeholder-subtext">Enter a search term to see keyword in context results</div>
+                            </div>
+                        `;
+                        exportBtn.disabled = true;
+                        return;
+                    }
                     const data = await kwicModule.processFiles(selectedFiles, query, minFreq);
                     kwicModule.render(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
                     document.getElementById('totalHits').textContent = `Hits: ${data.totalHits}`;
                     document.getElementById('totalTokens').textContent = `Tokens: ${data.totalTokens.toLocaleString()}`;
                 } else if (currentView === 'plot') {
+                    if (!query) {
+                        resultsArea.innerHTML = `
+                            <div class="placeholder">
+                                <div class="placeholder-icon">📊</div>
+                                <div class="placeholder-text">Plot View</div>
+                                <div class="placeholder-subtext">Enter a search term to see distribution plot</div>
+                            </div>
+                        `;
+                        exportBtn.disabled = true;
+                        return;
+                    }
                     const data = await plotModule.processFiles(selectedFiles, query, minFreq);
                     plotModule.render(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
                     document.getElementById('totalHits').textContent = `Hits: ${data.totalHits}`;
                 } else if (currentView === 'file-view') {
+                    if (!query) {
+                        resultsArea.innerHTML = `
+                            <div class="placeholder">
+                                <div class="placeholder-icon">📄</div>
+                                <div class="placeholder-text">File View</div>
+                                <div class="placeholder-subtext">Enter a search term to see results by file</div>
+                            </div>
+                        `;
+                        exportBtn.disabled = true;
+                        return;
+                    }
                     const data = await fileViewModule.processFiles(selectedFiles, query, minFreq);
                     fileViewModule.render(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
                     document.getElementById('totalHits').textContent = `Hits: ${data.totalHits}`;
                 } else if (currentView === 'cluster') {
+                    if (!query) {
+                        resultsArea.innerHTML = `
+                            <div class="placeholder">
+                                <div class="placeholder-icon">🔗</div>
+                                <div class="placeholder-text">Cluster View</div>
+                                <div class="placeholder-subtext">Enter a search term to see cluster analysis</div>
+                            </div>
+                        `;
+                        exportBtn.disabled = true;
+                        return;
+                    }
                     const data = await clusterModule.processFiles(selectedFiles, query, minFreq);
                     clusterModule.render(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
+                    document.getElementById('totalHits').textContent = `Hits: ${data.totalHits}`;
+                } else if (currentView === 'collocate') {
+                    if (!query) {
+                        resultsArea.innerHTML = `
+                            <div class="placeholder">
+                                <div class="placeholder-icon">🔤</div>
+                                <div class="placeholder-text">Collocate View</div>
+                                <div class="placeholder-subtext">Enter a search term to see collocations</div>
+                            </div>
+                        `;
+                        exportBtn.disabled = true;
+                        return;
+                    }
+                    const data = await collocateModule.processFiles(selectedFiles, query, minFreq, 5);
+                    collocateModule.render(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
                 } else if (currentView === 'wordcloud') {
                     const data = await wordCloudModule.processFiles(selectedFiles, query, minFreq);
                     wordCloudModule.render(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
                 } else if (currentView === 'word') {
                     const data = await wordModule.processFiles(selectedFiles, query, minFreq);
                     wordModule.renderWordList(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
                 } else if (currentView === 'keyword') {
                     const data = await wordModule.processFiles(selectedFiles, query, minFreq);
                     wordModule.renderWordList(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
                 } else if (currentView === 'n-gram') {
-                    const data = await ngramModule.init(selectedFiles);   
+                    const data = await ngramModule.processFiles(selectedFiles, query, minFreq, 2);
                     ngramModule.render(resultsArea, data);
-                } else if (currentView === 'collocate') {
-                    const data = await collocateModule.processFiles(selectedFiles, query, minFreq, 5);
-                    collocateModule.render(resultsArea, data);
-                } else if (currentView === 'morphology') {
-                    const data = await morphologyModule.processFiles(selectedFiles, query, minFreq);
-                    morphologyModule.render(resultsArea, data);
-                    document.getElementById('totalHits').textContent = `Words: ${data.totalHits}`;
-                } else if (currentView === 'tokentype') {
-                    const data = await tokenTypeModule.processFiles(selectedFiles, query, minFreq);
-                    tokenTypeModule.render(resultsArea, data);
-                    document.getElementById('totalHits').textContent = `Tokens: ${data.totalHits}`;
+                    currentResults = data;
+                    exportBtn.disabled = false;
                 } else if (currentView === 'POS') {
-                    const data = await posModule.processFiles(selectedFiles);
-                    posModule.render(resultsArea, data);
-
-                    document.getElementById('totalHits').textContent =
-                        `Words: ${data.results.length}`;
+                    const data = await posModule.processFiles(selectedFiles, query, minFreq, currentPOSTag, currentPOSType);
                     
+                    // Populate POS type dropdown with unique types
+                    if (data.success && data.results) {
+                        const uniqueTypes = [...new Set(data.results.map(r => r.pos_type).filter(t => t))];
+                        posTypeDropdown.innerHTML = '<option value="all">All Types</option>';
+                        uniqueTypes.sort().forEach(type => {
+                            posTypeDropdown.innerHTML += `<option value="${type}">${type}</option>`;
+                        });
+                        if (currentPOSType !== 'all') {
+                            posTypeDropdown.value = currentPOSType;
+                        }
+                    }
+                    
+                    posModule.render(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
+                    const displayCount = data.results ? (query || currentPOSTag !== 'all' || currentPOSType !== 'all' ? data.results.filter(r => {
+                        const matchesQuery = !query || r.word.toLowerCase().includes(query.toLowerCase()) ||
+                            (r.pos || '').toLowerCase().includes(query.toLowerCase()) ||
+                            (r.pos_type || '').toLowerCase().includes(query.toLowerCase());
+                        const matchesTag = currentPOSTag === 'all' || (r.pos || '').toUpperCase() === currentPOSTag.toUpperCase();
+                        const matchesType = currentPOSType === 'all' || (r.pos_type || '') === currentPOSType;
+                        return matchesQuery && matchesTag && matchesType;
+                    }).length : data.results.length) : 0;
+                    document.getElementById('totalHits').textContent = `Words: ${displayCount}`;
                 } else if (currentView === 'bibliometrics') {
                     const data = await bibliometricsModule.processFiles(selectedFiles, query, minFreq, currentChart);
                     bibliometricsModule.render(resultsArea, data, currentChart);
-                    
-                }  else {
+                    currentResults = data;
+                    exportBtn.disabled = false;
+                } else {
                     loadView(currentView, query, minFreq);
+                    exportBtn.disabled = true;
                 }
             } catch (error) {
                 console.error('Search error:', error);
@@ -544,11 +803,12 @@
         }
 
         function updateView() {
+            const needsSearch = !NO_SEARCH_MODULES.includes(currentView);
             resultsArea.innerHTML = `
                 <div class="placeholder">
                     <div class="placeholder-icon">📊</div>
                     <div class="placeholder-text">${currentView.toUpperCase()} View${currentView === 'bibliometrics' ? ` - ${currentChart}` : ''}</div>
-                    <div class="placeholder-subtext">Enter a search term and click Search to see results</div>
+                    <div class="placeholder-subtext">${needsSearch ? 'Enter a search term and click Search to see results' : 'Select files to begin analysis'}</div>
                 </div>
             `;
         }
@@ -561,6 +821,124 @@
                     <div class="placeholder-subtext">This module is under development</div>
                 </div>
             `;
+        }
+        
+        // Export functions
+        function exportToCSV(data) {
+            let csvContent = '';
+            
+            if (currentView === 'POS' && data.results) {
+                // POS export
+                csvContent = 'Index,Before,Word,After,POS,Type,Frequency,Percentage\n';
+                const filteredResults = posModule.filterResults(data.results, data.query, data.minFreq, data.posTag, data.posType);
+                filteredResults.forEach((item, index) => {
+                    csvContent += `${index + 1},"${item.before || '-'}","${item.word}","${item.after || '-'}","${item.pos}","${item.pos_type || '-'}",${item.frequency || 1},"${item.percentage || '0%'}"\n`;
+                });
+            } else if (currentView === 'kwic' && data.results) {
+                // KWIC export
+                csvContent = 'File,Left Context,Keyword,Right Context\n';
+                data.results.forEach(item => {
+                    csvContent += `"${item.file}","${item.left}","${item.keyword}","${item.right}"\n`;
+                });
+            } else if (currentView === 'word' || currentView === 'keyword') {
+                // Word list export
+                csvContent = 'Rank,Word,Frequency,Percentage\n';
+                data.words?.forEach((item, index) => {
+                    csvContent += `${index + 1},"${item.word}",${item.freq},"${item.percentage}"\n`;
+                });
+            } else if (currentView === 'n-gram' && data.ngrams) {
+                // N-gram export
+                csvContent = 'Rank,N-Gram,Frequency\n';
+                data.ngrams.forEach((item, index) => {
+                    csvContent += `${index + 1},"${item.ngram}",${item.count}\n`;
+                });
+            } else {
+                alert('Export not supported for this view yet');
+                return;
+            }
+            
+            downloadFile(csvContent, `${currentView}_results.csv`, 'text/csv');
+        }
+        
+        function exportToExcel(data) {
+            let worksheetData = [];
+            
+            if (currentView === 'POS' && data.results) {
+                const filteredResults = posModule.filterResults(data.results, data.query, data.minFreq, data.posTag, data.posType);
+                worksheetData = [
+                    ['Index', 'Before', 'Word', 'After', 'POS', 'Type', 'Frequency', 'Percentage'],
+                    ...filteredResults.map((item, index) => [
+                        index + 1,
+                        item.before || '-',
+                        item.word,
+                        item.after || '-',
+                        item.pos,
+                        item.pos_type || '-',
+                        item.frequency || 1,
+                        item.percentage || '0%'
+                    ])
+                ];
+            } else if (currentView === 'kwic' && data.results) {
+                worksheetData = [
+                    ['File', 'Left Context', 'Keyword', 'Right Context'],
+                    ...data.results.map(item => [item.file, item.left, item.keyword, item.right])
+                ];
+            } else if (currentView === 'word' || currentView === 'keyword') {
+                worksheetData = [
+                    ['Rank', 'Word', 'Frequency', 'Percentage'],
+                    ...(data.words || []).map((item, index) => [index + 1, item.word, item.freq, item.percentage])
+                ];
+            } else if (currentView === 'n-gram' && data.ngrams) {
+                worksheetData = [
+                    ['Rank', 'N-Gram', 'Frequency'],
+                    ...data.ngrams.map((item, index) => [index + 1, item.ngram, item.count])
+                ];
+            } else {
+                alert('Export not supported for this view yet');
+                return;
+            }
+            
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(worksheetData);
+            XLSX.utils.book_append_sheet(wb, ws, currentView.toUpperCase());
+            XLSX.writeFile(wb, `${currentView}_results.xlsx`);
+        }
+        
+        function exportToJSON(data) {
+            let exportData = {};
+            
+            if (currentView === 'POS' && data.results) {
+                const filteredResults = posModule.filterResults(data.results, data.query, data.minFreq, data.posTag, data.posType);
+                exportData = {
+                    view: 'POS',
+                    query: data.query,
+                    posTag: data.posTag,
+                    posType: data.posType,
+                    minFreq: data.minFreq,
+                    totalResults: filteredResults.length,
+                    results: filteredResults
+                };
+            } else {
+                exportData = {
+                    view: currentView,
+                    data: data
+                };
+            }
+            
+            const jsonStr = JSON.stringify(exportData, null, 2);
+            downloadFile(jsonStr, `${currentView}_results.json`, 'application/json');
+        }
+        
+        function downloadFile(content, filename, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
     </script>
 
@@ -578,13 +956,8 @@
     <script src="word.js"></script>
     <script src="collocate.js"></script>
     <script src="bibliometrics.js"></script>
-
-    <script src="POS.js"></script>   <!-- ✅ MUST LOAD -->
+    <script src="POS.js"></script>
     <script src="morphology.js"></script>
     <script src="tokentype.js"></script>
-    
-
-
-
 </body>
 </html>
