@@ -363,6 +363,7 @@
             <button class="nav-btn" data-view="wordcloud">Wordcloud</button>
             <button class="nav-btn" data-view="bibliometrics">Bibliometrics</button>
             <button class="nav-btn" data-view="POS">POS</button>
+            <button class="nav-btn" data-view="tokentype">Token/Type</button>
         </nav>
 
         <div class="content-area">
@@ -462,7 +463,7 @@
         let currentResults = null;
 
         // Modules that don't require search query
-        const NO_SEARCH_MODULES = ['n-gram', 'word', 'keyword', 'wordcloud', 'POS', 'bibliometrics'];
+        const NO_SEARCH_MODULES = ['n-gram', 'word', 'keyword', 'wordcloud', 'POS', 'bibliometrics', 'tokentype'];
 
         // File handling
         const fileInput = document.getElementById('fileInput');
@@ -786,6 +787,13 @@
                     bibliometricsModule.render(resultsArea, data, currentChart);
                     currentResults = data;
                     exportBtn.disabled = false;
+                } else if (currentView === 'tokentype') {
+                    const data = await tokenTypeModule.processFiles(selectedFiles, query, minFreq);
+                    tokenTypeModule.render(resultsArea, data);
+                    currentResults = data;
+                    exportBtn.disabled = false;
+                    document.getElementById('totalHits').textContent = `Types: ${data.statistics?.totalTypes || 0}`;
+                    document.getElementById('totalTokens').textContent = `Tokens: ${data.statistics?.totalTokens?.toLocaleString() || 0}`;
                 } else {
                     loadView(currentView, query, minFreq);
                     exportBtn.disabled = true;
@@ -834,6 +842,12 @@
                 filteredResults.forEach((item, index) => {
                     csvContent += `${index + 1},"${item.before || '-'}","${item.word}","${item.after || '-'}","${item.pos}","${item.pos_type || '-'}",${item.frequency || 1},"${item.percentage || '0%'}"\n`;
                 });
+            } else if (currentView === 'tokentype' && data.results) {
+                // Token/Type export
+                csvContent = 'Rank,Word,POS,Type,Frequency,Percentage,Category\n';
+                data.results.forEach((item, index) => {
+                    csvContent += `${index + 1},"${item.word}","${item.pos}","${item.pos_type || '-'}",${item.frequency},"${item.percentage}","${item.typeCategory}"\n`;
+                });
             } else if (currentView === 'kwic' && data.results) {
                 // KWIC export
                 csvContent = 'File,Left Context,Keyword,Right Context\n';
@@ -876,6 +890,19 @@
                         item.pos_type || '-',
                         item.frequency || 1,
                         item.percentage || '0%'
+                    ])
+                ];
+            } else if (currentView === 'tokentype' && data.results) {
+                worksheetData = [
+                    ['Rank', 'Word', 'POS', 'Type', 'Frequency', 'Percentage', 'Category'],
+                    ...data.results.map((item, index) => [
+                        index + 1,
+                        item.word,
+                        item.pos,
+                        item.pos_type || '-',
+                        item.frequency,
+                        item.percentage,
+                        item.typeCategory
                     ])
                 ];
             } else if (currentView === 'kwic' && data.results) {
