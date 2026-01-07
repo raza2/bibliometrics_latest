@@ -356,7 +356,7 @@
             <button class="nav-btn" data-view="plot">Plot</button>
             <button class="nav-btn" data-view="file-view">File View</button>
             <button class="nav-btn" data-view="cluster">Cluster</button>
-            <button class="nav-btn" data-view="n-gram">N-Gram</button>
+            <button class="nav-btn active" data-view="n-gram">N-Gram</button>            
             <button class="nav-btn" data-view="collocate">Collocate</button>
             <button class="nav-btn" data-view="word">Word</button>
             <button class="nav-btn" data-view="keyword">Keyword</button>
@@ -751,10 +751,8 @@
                     currentResults = data;
                     exportBtn.disabled = false;
                 } else if (currentView === 'n-gram') {
-                    const data = await ngramModule.processFiles(selectedFiles, query, minFreq, 2);
+                    const data = await ngramModule.init(selectedFiles);   
                     ngramModule.render(resultsArea, data);
-                    currentResults = data;
-                    exportBtn.disabled = false;
                 } else if (currentView === 'POS') {
                     const data = await posModule.processFiles(selectedFiles, query, minFreq, currentPOSTag, currentPOSType);
                     
