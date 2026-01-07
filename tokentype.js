@@ -1,60 +1,45 @@
 const tokenTypeModule = {
 
     async processFiles(files, query = '', minFreq = 1) {
-        if (!files || files.length === 0) {
-            return { success: false, message: 'Please upload files first' };
-        }
+
+    // 🚫 TokenType NEVER reads files
+    // 🚫 TokenType NEVER tokenizes text
+    // ✅ TokenType ONLY consumes POS output
 
         try {
-            const fileArray = Array.from(files);
-
-            const fileContents = await Promise.all(
-                fileArray.map(async (file) => {
-                    if (file && typeof file.content === 'string') {
-                        return file.content;
-                    }
-
-                    if (file instanceof File || file instanceof Blob) {
-                        return await file.text();
-                    }
-
-                    console.warn('Unknown file type:', file);
-                    return '';
-                })
-            );
-
-            const combinedText = fileContents.join(' ').trim();
-
-            if (!combinedText) {
+            // 1️⃣ Ensure POS analysis has already run
+            if (!window.POS_READY || !Array.isArray(window.POS_DATA)) {
                 return {
                     success: false,
-                    message: 'Files are empty or unreadable.'
+                    message: 'Please run POS analysis first.'
                 };
             }
 
-            const tokens = combinedText.match(/[\u0600-\u06FF]+/g);
-
-            if (!tokens || tokens.length === 0) {
+            if (window.POS_DATA.length === 0) {
                 return {
                     success: false,
-                    message: 'No Urdu text found.'
+                    message: 'POS data is empty.'
                 };
             }
 
-            const posResults = tokens.map((word, i) => ({
-                word,
-                pos: 'UNKNOWN',
-                pos_type: '-',
-                before: i > 0 ? tokens[i - 1] : '',
-                after: i < tokens.length - 1 ? tokens[i + 1] : ''
-            }));
-
+            // 2️⃣ Safety check
             if (typeof this.analyzeTokenTypes !== 'function') {
                 throw new Error('analyzeTokenTypes() is not defined');
             }
 
+            // 3️⃣ Reuse POS-tagged tokens directly (NO RETOKENIZATION)
+            const posResults = window.POS_DATA.map(item => ({
+                word: item.word,
+                pos: item.pos,
+                pos_type: item.pos_type,
+                before: item.before,
+                after: item.after
+            }));
+
+            // 4️⃣ Run token/type analysis
             const analysis = this.analyzeTokenTypes(posResults, query, minFreq);
 
+            // 5️⃣ Return clean result
             return {
                 success: true,
                 results: analysis.results || [],
@@ -64,12 +49,14 @@ const tokenTypeModule = {
             };
 
         } catch (error) {
+            console.error('TokenType Error:', error);
             return {
                 success: false,
-                message: 'Error processing files: ' + error.message
+                message: 'TokenType processing failed: ' + error.message
             };
         }
     },
+
 
     analyzeTokenTypes(posResults, query = '', minFreq = 1) {
         const totalTokens = posResults.length;
