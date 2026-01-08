@@ -1,265 +1,483 @@
-/* ===============================
-   POS MODULE — Modern AntConc
-   Pyodide-based Urdu POS Tagger
-================================ */
-
 const posModule = {
-    pyodide: null,
-    isInitialized: false,
-    allData: [],
+    apiEndpoint: '/api/pos',
 
-    async init() {
-        if (this.isInitialized) return;
+
+    async processFiles(files, container, options = {}) {
+        const { query = '', minFreq = 1, posTag = 'all', posType = 'all' } = options;
+
+        if (!files || files.length === 0) {
+            if (container) container.innerHTML = `<div style="color:red;">Please upload files first.</div>`;
+            return { success: false, message: 'Please upload files first', results: [] };
+        }
+
         try {
-            this.pyodide = await loadPyodide();
-            await this.loadPythonLogic();
-            this.isInitialized = true;
-        } catch (err) {
-            console.error("POS Init Failed:", err);
-            throw err;
+            // 1️⃣ Extract text from all files
+            const allText = await this.extractTextFromFiles(files);
+
+            if (!allText || !allText.trim()) {
+                if (container) container.innerHTML = `<div style="color:red;">No text found in uploaded files.</div>`;
+                return { success: false, message: 'No text found in uploaded files', results: [] };
+            }
+
+            // 2️⃣ Call the POS API
+            const apiResponse = await this.callPOSAPI(allText);
+
+            // 3️⃣ Add filtering info to response
+            apiResponse.query = query;
+            apiResponse.minFreq = parseInt(minFreq) || 1;
+            apiResponse.posTag = posTag;
+            apiResponse.posType = posType;
+
+            // 4️⃣ 🔥 Store globally for easy access
+            window.POS_DATA = Array.isArray(apiResponse.results) ? apiResponse.results : [];
+
+            // 5️⃣ Filter results
+            const filteredResults = this.filterResults(window.POS_DATA, query, minFreq, posTag, posType);
+
+            // 6️⃣ Render results automatically if container is provided
+            if (container) {
+                this.render(container, {
+                    success: true,
+                    results: filteredResults,
+                    query,
+                    minFreq,
+                    posTag,
+                    posType,
+                    total_words: window.POS_DATA.length
+                });
+            }
+
+            return {
+                success: true,
+                results: filteredResults,
+                statistics: { totalWords: window.POS_DATA.length },
+                query,
+                minFreq,
+                posTag,
+                posType
+            };
+
+        } catch (error) {
+            console.error('POS Module Error:', error);
+            if (container) container.innerHTML = `<div style="color:red;">Error: ${error.message}</div>`;
+            return { success: false, message: error.message, results: [] };
         }
     },
 
-    async loadPythonLogic() {
-        const pythonCode = `
-import json
-import re
-import unicodedata
-from collections import Counter
 
-# 1. Extensive Dictionary Setup
-DATA = {
-    "proper_nouns": {"پاکستان", "لاہور", "کراچی", "اسلام آباد", "فیصل آباد", "قائداعظم", "علامہ اقبال", "نیویارک", "چین", "روس", "برطانیہ", "گاندھی", "مولانا رومی", "الطاف حسین", "نیلسن منڈیلا", "امریکہ", "ٹوکیو", "پیرس", "واشنگٹن", "شیکسپئیر", "اردو", "پنجابی"},
-    "abstract_nouns": {"محبت", "دوستی", "علم", "ایمان", "خوشی", "غم", "نفرت", "عدل", "رحمت", "امید"},
-    "collective_nouns": {"فوج", "مجمع", "کمیٹی", "کلاس", "ٹیم", "قوم", "برادری", "خاندان", "ممبر", "اساتذہ"},
-    "common_nouns": {"کتاب", "دروازہ", "بچہ", "لڑکی", "لڑکا", "گھر", "گلی", "سڑک", "سکول", "کالج"},
-    "helping_verbs": {"ہے", "ہیں", "ہو", "تھا", "تھی", "تھے", "ہوگا", "ہوگی", "ہوں گے", "رہا", "رہی", "رہے", "چاہیے", "سکتا", "سکتی", "سکتے", "کر", "کریں", "ہوا", "ہوئی"},
-    "adjectives": {
-        "descriptive": {"خوبصورت", "عظیم", "پیارا", "سرد", "گرم", "نیا", "پرانا", "تیز", "سست", "صاف", "گندہ"},
-        "quantitative": {"کچھ", "کئی", "تھوڑا", "زیادہ", "کم", "مکمل", "نصف", "تمام", "بہت", "سارا"}
-    },
-    "adverbs": {
-        "time": {"آج", "کل", "اب", "پہلے", "بعد", "ہمیشہ", "ابھی", "فوراً"},
-        "place": {"یہاں", "وہاں", "نیچے", "اوپر", "باہر", "اندر", "قریب", "دور"}
-    },
-    "pronouns": {
-        "personal": {"میں", "ہم", "تم", "وہ", "آپ", "تو"},
-        "reflexive": {"خود", "اپنا", "اپنی", "اپنے"},
-        "relative": {"جو", "جس", "جسے", "جن"}
-    },
-    "conjunctions": {"اور", "یا", "لیکن", "مگر", "بلکہ", "کیونکہ", "اگر", "تاکہ", "کہ", "چونکہ", "ورنہ"},
-    "postpositions": {"کا", "کے", "کی", "سے", "نے", "کو", "تک", "میں", "پر"}
-}
+    async extractTextFromFiles(files) {
+        let combinedText = '';
 
-def classify_word(word, prev_word=""):
-    # CLEANING
-    word = word.strip()
-    
-    # 1. FIXED DICTIONARY LOOKUPS (High Priority)
-    if word in DATA["conjunctions"]: return "CCONJ", "Conjunction"
-    if word in DATA["postpositions"]: return "ADP", "Postposition"
-    if word in DATA["helping_verbs"]: return "AUX", "Helping Verb"
-    if word in DATA["pronouns"]["personal"]: return "PRON", "Personal Pronoun"
-    if word in DATA["pronouns"]["reflexive"]: return "PRON", "Reflexive Pronoun"
-    if word in DATA["pronouns"]["relative"]: return "PRON", "Relative Pronoun"
-    
-    # 2. ADJECTIVE CATEGORIES
-    if word in DATA["adjectives"]["descriptive"]: return "ADJ", "Descriptive Adjective"
-    if word in DATA["adjectives"]["quantitative"]: return "ADJ", "Quantitative Adjective"
-    
-    # 3. NOUN CATEGORIES (Dict + Suffix)
-    if word in DATA["proper_nouns"]: return "PROPN", "Proper Noun"
-    if word in DATA["abstract_nouns"] or word.endswith(("یت", "گی", "پن", "ائی", "اوت")):
-        return "NOUN", "Abstract Noun"
-    if word in DATA["collective_nouns"] or word.endswith(("ات", "گروہ")):
-        return "NOUN", "Collective Noun"
-    
-    # 4. VERB SUFFIX LOGIC
-    if word.endswith(("نا", "نی", "نے")): return "VERB", "Infinitive Verb"
-    if word.endswith(("تا", "تی", "تے")): return "VERB", "Present Verb"
-    if word.endswith(("یا", "ئی", "ئے")): return "VERB", "Past/Perfect Verb"
-    
-    # 5. ADVERB CATEGORIES
-    if word in DATA["adverbs"]["time"]: return "ADV", "Adverb of Time"
-    if word in DATA["adverbs"]["place"]: return "ADV", "Adverb of Place"
-
-    # 6. CONTEXTUAL HEURISTIC (Critical for 90% accuracy)
-    # If a word is followed by a postposition like 'کا', it is almost certainly a Noun
-    if prev_word and prev_word in DATA["postpositions"]:
-        # This logic is applied in the loop below
-        pass
-
-    # 7. FALLBACK
-    return "NOUN", "Common Noun"
-
-def process_text_bridge(text):
-    text = unicodedata.normalize("NFC", text)
-    tokens = re.findall(r"[\u0600-\u06FF]+", text)
-    total = len(tokens)
-    counts = Counter(tokens)
-    results = []
-    
-    for i, word in enumerate(tokens):
-        # Lookahead for Postpositions (Word + ka/ke/ki)
-        # If next word is a postposition, current word is likely a Noun
-        pos, p_type = classify_word(word)
-        
-        # Override: Contextual Correction
-        if i + 1 < total and tokens[i+1] in DATA["postpositions"]:
-            if pos not in ["PRON", "PROPN"]: # Don't overwrite pronouns
-                pos, p_type = "NOUN", "Noun (Contextual)"
-
-        results.append({
-            "before": " ".join(tokens[max(0, i-3):i]),
-            "word": word,
-            "after": " ".join(tokens[i+1:i+4]),
-            "pos": pos,
-            "pos_type": p_type,
-            "frequency": counts[word],
-            "percentage": round((counts[word] / total) * 100, 2)
-        })
-    return json.dumps(results)
-        `;
-        await this.pyodide.runPythonAsync(pythonCode);
-    },
-
-    async processFiles(files) {
-        if (!this.isInitialized) await this.init();
-        let allResults = [];
         for (const file of files) {
-            const text = await file.text();
-            this.pyodide.globals.set("raw_text_input", text);
-            const jsonData = await this.pyodide.runPythonAsync("process_text_bridge(raw_text_input)");
-            allResults.push(...JSON.parse(jsonData));
+            try {
+                const text = await this.readFile(file);
+                combinedText += text + '\n';
+            } catch (error) {
+                console.error(`Error reading file ${file.name}:`, error);
+            }
         }
-        this.allData = allResults;
-        return { results: allResults };
+
+        return combinedText.trim();
+    },
+
+    async readFile(file) {
+        const extension = file.name.split('.').pop().toLowerCase();
+
+        if (extension === 'txt') {
+            return await this.readTextFile(file);
+        } else if (extension === 'xlsx' || extension === 'xls') {
+            return await this.readExcelFile(file);
+        } else if (extension === 'csv') {
+            return await this.readCSVFile(file);
+        } else {
+            throw new Error(`Unsupported file type: ${extension}`);
+        }
+    },
+
+    readTextFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(new Error('Failed to read text file'));
+            reader.readAsText(file);
+        });
+    },
+
+    readExcelFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    let text = '';
+
+                    workbook.SheetNames.forEach(sheetName => {
+                        const sheet = workbook.Sheets[sheetName];
+                        const csv = XLSX.utils.sheet_to_csv(sheet);
+                        text += csv + '\n';
+                    });
+
+                    resolve(text);
+                } catch (error) {
+                    reject(new Error('Failed to read Excel file'));
+                }
+            };
+            reader.onerror = () => reject(new Error('Failed to read Excel file'));
+            reader.readAsArrayBuffer(file);
+        });
+    },
+
+    readCSVFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = () => reject(new Error('Failed to read CSV file'));
+            reader.readAsText(file);
+        });
+    },
+
+    async callPOSAPI(text) {
+        try {
+            const response = await fetch(this.apiEndpoint, {
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json',
+                    'Authorization': this.apiToken,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ text: text })
+            });
+
+            if (!response.ok) {
+                throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            return data;
+        } catch (error) {
+            console.error('API Call Error:', error);
+            throw new Error(`Failed to call POS API: ${error.message}`);
+        }
+    },
+
+    filterResults(results, query, minFreq, posTag = 'all', posType = 'all') {
+        if (!results || results.length === 0) return [];
+        
+        let filtered = results;
+        
+        // Filter by POS tag if not "all"
+        if (posTag && posTag !== 'all') {
+            filtered = filtered.filter(item => {
+                const itemPos = (item.pos || '').toUpperCase();
+                return itemPos === posTag.toUpperCase() || itemPos.startsWith(posTag.toUpperCase());
+            });
+        }
+        
+        // Filter by POS type if not "all"
+        if (posType && posType !== 'all') {
+            filtered = filtered.filter(item => {
+                const itemType = item.pos_type || '';
+                return itemType === posType;
+            });
+        }
+        
+        // Filter by search query if provided
+        if (query && query.trim()) {
+            const searchTerm = query.trim().toLowerCase();
+            filtered = filtered.filter(item => {
+                const word = (item.word || '').toLowerCase();
+                const pos = (item.pos || '').toLowerCase();
+                const posTypeStr = (item.pos_type || '').toLowerCase();
+                
+                return word.includes(searchTerm) || 
+                       pos.includes(searchTerm) || 
+                       posTypeStr.includes(searchTerm);
+            });
+        }
+        
+        // Filter by minimum frequency
+        if (minFreq > 1) {
+            filtered = filtered.filter(item => {
+                const freq = parseInt(item.frequency) || 1;
+                return freq >= minFreq;
+            });
+        }
+        
+        return filtered;
     },
 
     render(container, data) {
-        this.allData = data.results;
+        if (!data.success) {
+            container.innerHTML = `
+                <div class="placeholder">
+                    <div class="placeholder-icon">❌</div>
+                    <div class="placeholder-text">Error</div>
+                    <div class="placeholder-subtext">${data.message || 'Failed to analyze text'}</div>
+                </div>
+            `;
+            return;
+        }
 
-        const subTypeMap = {
-            "all": ["All Sub-types"],
-            "NOUN": ["Common Noun", "Proper Noun", "Abstract Noun", "Collective Noun"],
-            "VERB": ["Helping Verb", "Infinitive Verb", "Present Verb"],
-            "PROPN": ["Proper Noun"],
-            "CCONJ": ["Conjunction"],
-            "PRON": ["Pronoun"]
-        };
+        const allResults = data.results || [];
+        const query = data.query || '';
+        const minFreq = data.minFreq || 1;
+        const posTag = data.posTag || 'all';
+        const posType = data.posType || 'all';
+        
+        // Filter results based on query, frequency, POS tag, and POS type
+        const filteredResults = this.filterResults(allResults, query, minFreq, posTag, posType);
 
-        container.innerHTML = `
+        if (filteredResults.length === 0) {
+            let filters = [];
+            if (query) filters.push(`"${query}"`);
+            if (posTag !== 'all') filters.push(`POS: ${posTag}`);
+            if (posType !== 'all') filters.push(`Type: ${posType}`);
+            if (minFreq > 1) filters.push(`frequency ≥ ${minFreq}`);
+            
+            const message = filters.length > 0 ? 
+                `No results found for ${filters.join(', ')}` :
+                'No POS tags found in the text';
+                
+            container.innerHTML = `
+                <div class="placeholder">
+                    <div class="placeholder-icon">📝</div>
+                    <div class="placeholder-text">No Results</div>
+                    <div class="placeholder-subtext">${message}</div>
+                    ${query ? '<div class="placeholder-subtext" style="margin-top: 8px;">Try a different search term or clear the search to see all results</div>' : ''}
+                </div>
+            `;
+            return;
+        }
+
+        // Create the results table
+        let html = `
             <style>
-                .pos-filter-area { display: flex; gap: 15px; margin-bottom: 20px; align-items: center; }
-                .pos-dropdown { padding: 10px; border-radius: 6px; border: 1px solid #ccc; background: white; }
-                .btn-csv { padding: 10px 20px; background: #27ae60; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-                .pos-table-container { overflow: auto; max-height: 500px; border: 1px solid #ddd; border-radius: 8px; }
-                .urdu-table { width: 100%; border-collapse: collapse; font-family: 'JameelNoori', sans-serif; }
-                .urdu-table th { position: sticky; top: 0; background: #2c3e50; color: white; padding: 12px; z-index: 10; border: 1px solid #34495e; }
-                .urdu-table td { padding: 10px; border: 1px solid #edf2f7; text-align: center; direction: rtl; }
-                .urdu-table tr:nth-child(even) { background-color: #f8fafc; }
-                .tag-chip { background: #e0e7ff; color: #4338ca; padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+                .pos-container {
+                    background: white;
+                    border-radius: 8px;
+                    overflow: hidden;
+                }
+                
+                .pos-stats {
+                    display: flex;
+                    gap: 16px;
+                    padding: 16px;
+                    background: #f8f9fa;
+                    border-bottom: 2px solid #dee2e6;
+                    flex-wrap: wrap;
+                }
+                
+                .pos-stat {
+                    background: white;
+                    padding: 12px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                
+                .pos-stat-label {
+                    font-size: 12px;
+                    color: #6c757d;
+                    margin-bottom: 4px;
+                }
+                
+                .pos-stat-value {
+                    font-size: 20px;
+                    font-weight: 600;
+                    color: #667eea;
+                }
+                
+                .pos-search-info {
+                    padding: 12px 16px;
+                    background: #e7f3ff;
+                    border-left: 4px solid #0066cc;
+                    margin: 16px;
+                    border-radius: 4px;
+                }
+                
+                .pos-search-text {
+                    font-size: 14px;
+                    color: #495057;
+                }
+                
+                .pos-search-term {
+                    font-weight: 600;
+                    color: #0066cc;
+                }
+                
+                .pos-table-container {
+                    overflow-x: auto;
+                    max-height: 600px;
+                    overflow-y: auto;
+                }
+                
+                .pos-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 14px;
+                }
+                
+                .pos-table thead {
+                    position: sticky;
+                    top: 0;
+                    background: #667eea;
+                    color: white;
+                    z-index: 10;
+                }
+                
+                .pos-table th {
+                    padding: 12px;
+                    text-align: center;
+                    font-weight: 600;
+                    border-bottom: 2px solid #5568d3;
+                }
+                
+                .pos-table td {
+                    padding: 10px 12px;
+                    border-bottom: 1px solid #dee2e6;
+                    text-align: center;
+                }
+                
+                .pos-table td.rtl-text {
+                    direction: rtl;
+                    font-family: 'JameelNoori', 'Noto Nastaliq Urdu', serif;
+                    text-align: center;
+                }
+                
+                .pos-table tbody tr:hover {
+                    background: #f8f9fa;
+                }
+                
+                .pos-table tbody tr:nth-child(even) {
+                    background: #fafbfc;
+                }
+                
+                .pos-word {
+                    font-weight: 600;
+                    color: #212529;
+                    font-size: 16px;
+                }
+                
+                .pos-word-highlight {
+                    background: #fff3cd;
+                    padding: 2px 4px;
+                    border-radius: 3px;
+                }
+                
+                .pos-tag {
+                    display: inline-block;
+                    padding: 4px 8px;
+                    background: #e7f3ff;
+                    color: #0066cc;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+                
+                .pos-type {
+                    color: #6c757d;
+                    font-size: 13px;
+                }
+                
+                .pos-freq {
+                    font-weight: 600;
+                    color: #28a745;
+                }
+                
+                .pos-percentage {
+                    color: #667eea;
+                    font-weight: 600;
+                }
             </style>
+            
+            <div class="pos-container">
+                <div class="pos-stats">
+                    <div class="pos-stat">
+                        <div class="pos-stat-label">Total Words (All)</div>
+                        <div class="pos-stat-value">${data.total_words || allResults.length}</div>
+                    </div>
+                    <div class="pos-stat">
+                        <div class="pos-stat-label">${query ? 'Filtered Results' : 'Results Shown'}</div>
+                        <div class="pos-stat-value">${filteredResults.length}</div>
+                    </div>
+                    <div class="pos-stat">
+                        <div class="pos-stat-label">Unique Words</div>
+                        <div class="pos-stat-value">${new Set(filteredResults.map(r => r.word)).size}</div>
+                    </div>
+                    <div class="pos-stat">
+                        <div class="pos-stat-label">POS Tags</div>
+                        <div class="pos-stat-value">${new Set(filteredResults.map(r => r.pos)).size}</div>
+                    </div>
+                </div>
+        `;
 
-            <div class="pos-filter-area">
-                <select id="mainType" class="pos-dropdown">
-                    <option value="all">All Tags (All POS)</option>
-                    <option value="NOUN">NOUN</option>
-                    <option value="VERB">VERB</option>
-                    <option value="PROPN">PROPN</option>
-                    <option value="CCONJ">CCONJ</option>
-                    <option value="PRON">PRON</option>
-                </select>
-                <select id="subType" class="pos-dropdown">
-                    <option value="all">All Sub-types</option>
-                </select>
-                <button class="btn-csv" id="downloadCsv">📥 Export CSV</button>
-            </div>
+        // Add search info if query exists
+        if (query || posTag !== 'all' || posType !== 'all') {
+            html += `
+                <div class="pos-search-info">
+                    <span class="pos-search-text">
+                        ${query ? `Search: <span class="pos-search-term">"${query}"</span>` : ''}
+                        ${query && (posTag !== 'all' || posType !== 'all') ? ' | ' : ''}
+                        ${posTag !== 'all' ? `POS Tag: <span class="pos-search-term">${posTag}</span>` : ''}
+                        ${posTag !== 'all' && posType !== 'all' ? ' | ' : ''}
+                        ${posType !== 'all' ? `POS Type: <span class="pos-search-term">${posType}</span>` : ''}
+                        ${minFreq > 1 ? ` | Minimum frequency: <span class="pos-search-term">${minFreq}</span>` : ''}
+                    </span>
+                </div>
+            `;
+        }
 
-            <div class="pos-table-container">
-                <table class="urdu-table">
-                    <thead>
-                        <tr>
-                            <th>Before</th>
-                            <th>Word</th>
-                            <th>After</th>
-                            <th>POS</th>
-                            <th>Sub-Type</th>
-                            <th>Freq</th>
-                        </tr>
-                    </thead>
-                    <tbody id="posBody"></tbody>
-                </table>
+        html += `
+                <div class="pos-table-container">
+                    <table class="pos-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Before</th>
+                                <th>Word</th>
+                                <th>After</th>
+                                <th>POS</th>
+                                <th>Type</th>
+                                <th>Frequency</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+
+        filteredResults.forEach((item, index) => {
+            // Highlight search term if it matches
+            const shouldHighlight = query && 
+                (item.word.toLowerCase().includes(query.toLowerCase()) ||
+                 (item.pos || '').toLowerCase().includes(query.toLowerCase()) ||
+                 (item.pos_type || '').toLowerCase().includes(query.toLowerCase()));
+            
+            const wordClass = shouldHighlight ? 'pos-word pos-word-highlight' : 'pos-word';
+            
+            html += `
+                <tr>
+                    <td>${index + 1}</td>
+                    <td class="${wordClass} rtl-text">${item.before || '-'}</td>
+                    <td class="${wordClass} rtl-text">${item.word}</td>
+                    <td class="${wordClass} rtl-text">${item.after || '-'}</td>
+                    <td><span class="pos-tag">${item.pos}</span></td>
+                    <td class="pos-type">${item.pos_type || '-'}</td>
+                    <td class="pos-freq">${item.frequency || 1}</td>
+                    <td class="pos-percentage">${item.percentage || '0%'}</td>
+                </tr>
+            `;
+        });
+
+        html += `
+                        </tbody>
+                    </table>
+                </div>
             </div>
         `;
 
-        const mainSelect = document.getElementById('mainType');
-        const subSelect = document.getElementById('subType');
-        const searchInput = document.getElementById('searchQuery'); // Link to your antconc.html search bar
-
-        // Update Sub-Types dropdown
-        mainSelect.addEventListener('change', () => {
-            const val = mainSelect.value;
-            subSelect.innerHTML = subTypeMap[val].map(s => `<option value="${s === 'All Sub-types' ? 'all' : s}">${s}</option>`).join('');
-            this.applyFilters();
-        });
-
-        subSelect.addEventListener('change', () => this.applyFilters());
-        
-        // Listen to your existing search input in antconc.html
-        searchInput.addEventListener('input', () => this.applyFilters());
-
-        document.getElementById('downloadCsv').addEventListener('click', () => this.exportToCSV());
-
-        this.applyFilters();
-    },
-
-    applyFilters() {
-        const main = document.getElementById('mainType').value;
-        const sub = document.getElementById('subType').value;
-        const search = document.getElementById('searchQuery').value.toLowerCase();
-        const tbody = document.getElementById('posBody');
-
-        const filtered = this.allData.filter(item => {
-            const matchMain = main === 'all' || item.pos === main;
-            const matchSub = sub === 'all' || item.pos_type === sub;
-            const matchSearch = item.word.toLowerCase().includes(search);
-            return matchMain && matchSub && matchSearch;
-        });
-
-        tbody.innerHTML = filtered.map(r => `
-            <tr>
-                <td style="color:#777; font-size: 0.9em;">${r.before}</td>
-                <td style="font-weight:bold; font-size: 1.2em;">${r.word}</td>
-                <td style="color:#777; font-size: 0.9em;">${r.after}</td>
-                <td><span class="tag-chip">${r.pos}</span></td>
-                <td>${r.pos_type}</td>
-                <td>${r.frequency}</td>
-            </tr>
-        `).join('');
-    },
-
-    exportToCSV() {
-        let csv = "Before,Word,After,POS,Type,Frequency\n";
-        const search = document.getElementById('searchQuery').value.toLowerCase();
-        const main = document.getElementById('mainType').value;
-        const sub = document.getElementById('subType').value;
-
-        this.allData.forEach(r => {
-            const matchMain = main === 'all' || r.pos === main;
-            const matchSub = sub === 'all' || r.pos_type === sub;
-            const matchSearch = r.word.toLowerCase().includes(search);
-            
-            if(matchMain && matchSub && matchSearch) {
-                csv += `"${r.before}","${r.word}","${r.after}","${r.pos}","${r.pos_type}","${r.frequency}"\n`;
-            }
-        });
-
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `urdu_pos_analysis.csv`;
-        a.click();
+        container.innerHTML = html;
     }
 };
+
+// Make it globally available
+window.posModule = posModule;
