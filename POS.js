@@ -1,6 +1,6 @@
 const posModule = {
-    apiEndpoint: 'http://lekhari.aiou.edu.pk/pos/analyze',
-    apiToken: '024d89fb666a0af58fbaa05b95a175bc8f91e51e2c1be343e0d23db7ff1dad2f83bb6b019d506a31ff5daca0c0938b3a7e588942f51277a33a294c27c88c9196',
+    apiEndpoint: '/api/pos',
+
 
     async processFiles(files, container, options = {}) {
         const { query = '', minFreq = 1, posTag = 'all', posType = 'all' } = options;
@@ -142,9 +142,8 @@ const posModule = {
             const response = await fetch(this.apiEndpoint, {
                 method: 'POST',
                 headers: {
-                    'accept': 'application/json',
-                    'Authorization': this.apiToken,
                     'Content-Type': 'application/json'
+                    
                 },
                 body: JSON.stringify({ text: text })
             });
